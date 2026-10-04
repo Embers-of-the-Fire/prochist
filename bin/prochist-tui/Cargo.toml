@@ -1,0 +1,16 @@
+[package]
+name = "prochist-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "phi - interactive TUI for the process tree around a PID"
+
+[[bin]]
+name = "phi"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+crossterm.workspace = true
+ratatui.workspace = true
+prochist-core = { version = "0.1.0", path = "../../crates/prochist-core" }
