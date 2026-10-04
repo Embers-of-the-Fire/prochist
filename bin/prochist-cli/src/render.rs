@@ -8,6 +8,8 @@ pub struct RenderOptions {
     pub ascii: bool,
     pub long: bool,
     pub executable: bool,
+    pub max_ancestors: Option<usize>,
+    pub max_children: Option<usize>,
 }
 
 struct Glyphs {
@@ -66,16 +68,40 @@ fn node(
     }
 }
 
+fn omitted(out: &mut String, g: &Glyphs, indent: usize, count: usize, is_last: bool) {
+    let base = g.blank.repeat(indent);
+    let connector = if is_last { g.last } else { g.branch };
+    let noun = if count == 1 { "process" } else { "processes" };
+    let _ = writeln!(out, "{base}{connector}... {count} {noun} omitted");
+}
+
 pub fn render(tree: &ProcessTree, opts: &RenderOptions) -> String {
     let g = if opts.ascii { &ASCII } else { &UNICODE };
     let mut out = String::new();
-    for ancestor in &tree.ancestors {
+
+    let skip = match opts.max_ancestors {
+        Some(max) => tree.ancestors.len().saturating_sub(max),
+        None => 0,
+    };
+    if skip > 0 {
+        omitted(&mut out, g, 0, skip, false);
+    }
+    for ancestor in &tree.ancestors[skip..] {
         node(&mut out, g, 0, ancestor, false, opts);
     }
+
     node(&mut out, g, 0, &tree.current, true, opts);
-    let last = tree.children.len().saturating_sub(1);
-    for (i, child) in tree.children.iter().enumerate() {
-        node(&mut out, g, 1, child, i == last, opts);
+
+    let shown = match opts.max_children {
+        Some(max) => tree.children.len().min(max),
+        None => tree.children.len(),
+    };
+    let hidden = tree.children.len() - shown;
+    for (i, child) in tree.children[..shown].iter().enumerate() {
+        node(&mut out, g, 1, child, hidden == 0 && i == shown - 1, opts);
+    }
+    if hidden > 0 {
+        omitted(&mut out, g, 1, hidden, true);
     }
     out
 }
@@ -146,6 +172,72 @@ mod tests {
             ..Default::default()
         };
         let expected = "|-- init (1)\n|   /sbin/init splash\n|-- bash (200)\n+-- ph (300)\n    /usr/local/bin/ph 300\n    |-- worker (301)\n    |   /usr/bin/worker --daemon\n    +-- logger (302)\n";
+        assert_eq!(render(&sample(), &opts), expected);
+    }
+
+    #[test]
+    fn max_ancestors_omits_oldest() {
+        let opts = RenderOptions {
+            max_ancestors: Some(1),
+            ..Default::default()
+        };
+        let expected = "├── ... 1 process omitted\n├── bash (200)\n└── ph (300)\n    ├── worker (301)\n    └── logger (302)\n";
+        assert_eq!(render(&sample(), &opts), expected);
+    }
+
+    #[test]
+    fn max_ancestors_zero_omits_all() {
+        let opts = RenderOptions {
+            max_ancestors: Some(0),
+            ..Default::default()
+        };
+        let expected = "├── ... 2 processes omitted\n└── ph (300)\n    ├── worker (301)\n    └── logger (302)\n";
+        assert_eq!(render(&sample(), &opts), expected);
+    }
+
+    #[test]
+    fn max_ancestors_above_length_is_noop() {
+        let opts = RenderOptions {
+            max_ancestors: Some(10),
+            ..Default::default()
+        };
+        assert_eq!(
+            render(&sample(), &opts),
+            render(&sample(), &RenderOptions::default())
+        );
+    }
+
+    #[test]
+    fn max_children_keeps_first_and_marks_last() {
+        let opts = RenderOptions {
+            max_children: Some(1),
+            ..Default::default()
+        };
+        let expected = "├── init (1)\n├── bash (200)\n└── ph (300)\n    ├── worker (301)\n    └── ... 1 process omitted\n";
+        assert_eq!(render(&sample(), &opts), expected);
+    }
+
+    #[test]
+    fn max_children_zero_shows_only_marker() {
+        let opts = RenderOptions {
+            max_children: Some(0),
+            ..Default::default()
+        };
+        let expected =
+            "├── init (1)\n├── bash (200)\n└── ph (300)\n    └── ... 2 processes omitted\n";
+        assert_eq!(render(&sample(), &opts), expected);
+    }
+
+    #[test]
+    fn limits_with_long_and_ascii() {
+        let opts = RenderOptions {
+            ascii: true,
+            long: true,
+            max_ancestors: Some(1),
+            max_children: Some(1),
+            ..Default::default()
+        };
+        let expected = "|-- ... 1 process omitted\n|-- bash (200)\n+-- ph (300)\n    /usr/local/bin/ph 300\n    |-- worker (301)\n    |   /usr/bin/worker --daemon\n    +-- ... 1 process omitted\n";
         assert_eq!(render(&sample(), &opts), expected);
     }
 }

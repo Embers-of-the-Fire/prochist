@@ -26,6 +26,14 @@ struct Cli {
     #[arg(short = 'E', long)]
     executable: bool,
 
+    /// Show at most N ancestors, omitting the oldest
+    #[arg(short = 'M', long, value_name = "N")]
+    max_ancestors: Option<usize>,
+
+    /// Show at most N children, omitting the rest
+    #[arg(short = 'C', long, value_name = "N")]
+    max_children: Option<usize>,
+
     /// Load a mocked process snapshot from a JSON file (testing only)
     #[arg(long, hide = true, value_name = "FILE")]
     snapshot: Option<PathBuf>,
@@ -58,6 +66,8 @@ fn main() -> ExitCode {
         ascii: cli.ascii,
         long: cli.long,
         executable: cli.executable,
+        max_ancestors: cli.max_ancestors,
+        max_children: cli.max_children,
     };
     match build_tree(&processes, pid) {
         Ok(tree) => {

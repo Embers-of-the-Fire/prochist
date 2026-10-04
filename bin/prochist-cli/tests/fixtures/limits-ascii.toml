@@ -1,0 +1,8 @@
+bin.name = "ph"
+args = "--snapshot tests/fixtures/limits.snapshot.json -A -M 1 -C 0 300"
+stdout = """
+|-- ... 3 processes omitted
+|-- bash (200)
++-- ph (300)
+    +-- ... 4 processes omitted
+"""
