@@ -107,13 +107,21 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
         .clone()
         .unwrap_or_else(|| " ?: help  q: quit".to_string());
     let separator = || Span::styled(" │ ", Style::default().fg(Color::DarkGray));
-    let mut spans = vec![mode_tag, Span::raw(position)];
+    let mut spans = vec![
+        mode_tag,
+        Span::raw(position),
+        separator(),
+        Span::raw(message),
+    ];
     if let Some(crumb) = app.breadcrumb() {
-        spans.push(separator());
-        spans.push(Span::styled(crumb, Style::default().fg(Color::Cyan)));
+        let used: usize = spans.iter().map(|s| s.width()).sum();
+        let budget = (area.width as usize).saturating_sub(used + 3);
+        let crumb = truncate(&crumb, budget);
+        if !crumb.is_empty() {
+            spans.push(separator());
+            spans.push(Span::styled(crumb, Style::default().fg(Color::Cyan)));
+        }
     }
-    spans.push(separator());
-    spans.push(Span::raw(message));
     frame.render_widget(Line::from(spans), area);
 }
 
@@ -157,6 +165,18 @@ fn draw_actions(frame: &mut Frame, app: &App, area: Rect) {
             .border_style(Style::default().fg(Color::Cyan)),
     );
     frame.render_widget(actions, popup);
+}
+
+fn truncate(text: &str, budget: usize) -> String {
+    if text.chars().count() <= budget {
+        return text.to_string();
+    }
+    if budget == 0 {
+        return String::new();
+    }
+    let mut out: String = text.chars().take(budget.saturating_sub(1)).collect();
+    out.push('…');
+    out
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
@@ -260,6 +280,21 @@ mod tests {
         terminal.draw(|f| draw(f, &mut app)).unwrap();
         let text = buffer_text(&terminal);
         assert!(text.contains("ph > worker"));
+    }
+
+    #[test]
+    fn status_message_survives_long_breadcrumb() {
+        let mut terminal = Terminal::new(TestBackend::new(50, 14)).unwrap();
+        let mut app = App::new(&sample_tree());
+        for _ in 0..10 {
+            app.apply_focus(&sample_tree());
+        }
+        app.note("no such process");
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        let text = buffer_text(&terminal);
+        let status_line = text.lines().nth(13).unwrap();
+        assert!(status_line.contains("no such process"));
+        assert!(status_line.chars().count() <= 50);
     }
 
     #[test]
