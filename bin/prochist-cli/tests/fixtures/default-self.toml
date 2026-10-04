@@ -1,0 +1,6 @@
+bin.name = "ph"
+args = "--snapshot tests/fixtures/basic.snapshot.json"
+status.code = 1
+stderr = """
+ph: error: no such process: [..]
+"""

@@ -1,0 +1,9 @@
+[
+  {"pid": 1, "ppid": 0, "name": "init"},
+  {"pid": 100, "ppid": 1, "name": "login"},
+  {"pid": 200, "ppid": 100, "name": "bash"},
+  {"pid": 300, "ppid": 200, "name": "ph"},
+  {"pid": 301, "ppid": 300, "name": "worker", "command": "/usr/bin/worker --daemon"},
+  {"pid": 302, "ppid": 300, "name": "logger"},
+  {"pid": 400, "ppid": 1, "name": "unrelated"}
+]

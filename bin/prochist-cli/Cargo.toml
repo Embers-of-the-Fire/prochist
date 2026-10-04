@@ -1,0 +1,18 @@
+[package]
+name = "prochist-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ph - print the process tree around a PID"
+
+[[bin]]
+name = "ph"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+prochist-core = { path = "../../crates/prochist-core" }
+
+[dev-dependencies]
+trycmd.workspace = true
+snapbox.workspace = true
