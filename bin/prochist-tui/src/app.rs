@@ -103,7 +103,7 @@ pub const ACTION_ITEMS: [ActionItem; 5] = [
     },
 ];
 
-pub const HELP_LINES: [&str; 35] = [
+pub const HELP_LINES: [&str; 45] = [
     "phi - interactive process tree",
     "",
     "Navigation",
@@ -120,6 +120,16 @@ pub const HELP_LINES: [&str; 35] = [
     "  Enter / f       focus the selected process (re-root)",
     "  Esc / Backspace return to the previous focus",
     "  a               action menu for the selected row",
+    "",
+    "Action menu (a)",
+    "  j / k           move through the actions",
+    "  Enter           run the highlighted action",
+    "  f               focus this process",
+    "  y               yank \"name (pid)\"",
+    "  c               yank the command line",
+    "  p               yank the PID",
+    "  e               yank the executable path",
+    "  Esc / a / q     close the menu",
     "",
     "Panes",
     "  Tab / i         focus the details pane",
@@ -768,6 +778,11 @@ mod tests {
             effect,
             Some(Effect::Copy("/usr/local/bin/ph 300".to_string()))
         );
+
+        app.handle_key(key(KeyCode::Char('a')));
+        let effect = app.handle_key(key(KeyCode::Char('e')));
+        assert_eq!(effect, Some(Effect::Copy("/usr/local/bin/ph".to_string())));
+        assert!(!app.show_actions);
 
         app.handle_key(key(KeyCode::Char('j')));
         app.handle_key(key(KeyCode::Char('a')));
