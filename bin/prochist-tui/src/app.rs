@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use prochist_core::{ProcessInfo, ProcessTree};
+use prochist_core::{Pid, ProcessInfo, ProcessTree};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
@@ -12,6 +12,8 @@ pub enum Focus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
     Copy(String),
+    Focus(Pid),
+    Restore(Pid),
 }
 
 #[derive(Debug, Clone)]
@@ -73,7 +75,35 @@ fn build_rows(tree: &ProcessTree) -> Vec<Row> {
     rows
 }
 
-pub const HELP_LINES: [&str; 30] = [
+pub struct ActionItem {
+    pub key: char,
+    pub label: &'static str,
+}
+
+pub const ACTION_ITEMS: [ActionItem; 5] = [
+    ActionItem {
+        key: 'f',
+        label: "Focus this process",
+    },
+    ActionItem {
+        key: 'y',
+        label: "Yank name (pid)",
+    },
+    ActionItem {
+        key: 'c',
+        label: "Yank command line",
+    },
+    ActionItem {
+        key: 'p',
+        label: "Yank PID",
+    },
+    ActionItem {
+        key: 'e',
+        label: "Yank executable path",
+    },
+];
+
+pub const HELP_LINES: [&str; 35] = [
     "phi - interactive process tree",
     "",
     "Navigation",
@@ -86,8 +116,13 @@ pub const HELP_LINES: [&str; 30] = [
     "  gg              jump to the first row",
     "  G               jump to the last row",
     "",
+    "Focus",
+    "  Enter / f       focus the selected process (re-root)",
+    "  Esc / Backspace return to the previous focus",
+    "  a               action menu for the selected row",
+    "",
     "Panes",
-    "  Tab / i / Enter focus the details pane",
+    "  Tab / i         focus the details pane",
     "  Esc / q         return to the tree pane",
     "",
     "Yank (copy)",
@@ -114,9 +149,12 @@ pub struct App {
     pub detail_selected: usize,
     pub show_help: bool,
     pub help_scroll: u16,
+    pub show_actions: bool,
+    pub action_selected: usize,
     pub status: Option<String>,
     pub view_height: u16,
     pub should_quit: bool,
+    focus_stack: Vec<(Pid, String)>,
     pending_g: bool,
 }
 
@@ -131,9 +169,12 @@ impl App {
             detail_selected: 0,
             show_help: false,
             help_scroll: 0,
+            show_actions: false,
+            action_selected: 0,
             status: None,
             view_height: 1,
             should_quit: false,
+            focus_stack: Vec::new(),
             pending_g: false,
         }
     }
@@ -150,12 +191,56 @@ impl App {
         self.detail_selected = 0;
     }
 
+    pub fn apply_focus(&mut self, tree: &ProcessTree) {
+        let entry = {
+            let current = self.current_row();
+            (current.info.pid, display_name(&current.info))
+        };
+        self.focus_stack.push(entry);
+        self.set_rows(tree);
+    }
+
+    pub fn apply_restore(&mut self, tree: &ProcessTree) {
+        self.set_rows(tree);
+    }
+
+    fn set_rows(&mut self, tree: &ProcessTree) {
+        self.rows = build_rows(tree);
+        self.selected = tree.ancestors.len();
+        self.scroll = 0;
+        self.detail_selected = 0;
+    }
+
+    pub fn focused_pid(&self) -> Pid {
+        self.current_row().info.pid
+    }
+
+    pub fn breadcrumb(&self) -> Option<String> {
+        if self.focus_stack.is_empty() {
+            return None;
+        }
+        let mut parts: Vec<String> = self
+            .focus_stack
+            .iter()
+            .map(|(_, name)| name.clone())
+            .collect();
+        parts.push(display_name(&self.current_row().info));
+        Some(parts.join(" > "))
+    }
+
     pub fn note(&mut self, message: impl Into<String>) {
         self.status = Some(message.into());
     }
 
     fn selected_row(&self) -> &Row {
         &self.rows[self.selected]
+    }
+
+    fn current_row(&self) -> &Row {
+        self.rows
+            .iter()
+            .find(|r| r.is_current)
+            .unwrap_or(&self.rows[self.selected])
     }
 
     fn move_by(&mut self, delta: i64) {
@@ -190,6 +275,9 @@ impl App {
             self.handle_help_key(key);
             return None;
         }
+        if self.show_actions {
+            return self.handle_actions_key(key);
+        }
         match self.focus {
             Focus::Tree => self.handle_tree_key(key),
             Focus::Detail => self.handle_detail_key(key),
@@ -215,13 +303,30 @@ impl App {
         match key.code {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char('?') => self.show_help = true,
-            KeyCode::Tab | KeyCode::Enter | KeyCode::Char('i') => self.focus = Focus::Detail,
+            KeyCode::Tab | KeyCode::Char('i') => self.focus = Focus::Detail,
+            KeyCode::Esc | KeyCode::Backspace => {
+                if let Some((pid, _)) = self.focus_stack.pop() {
+                    return Some(Effect::Restore(pid));
+                }
+            }
+            KeyCode::Char('a') => {
+                self.show_actions = true;
+                self.action_selected = 0;
+            }
             KeyCode::Char('j') | KeyCode::Down => self.move_by(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_by(-1),
             KeyCode::Char('d') if ctrl => self.move_by(self.half_page()),
             KeyCode::Char('u') if ctrl => self.move_by(-self.half_page()),
             KeyCode::Char('f') if ctrl => self.move_by(self.page()),
             KeyCode::Char('b') if ctrl => self.move_by(-self.page()),
+            KeyCode::Enter | KeyCode::Char('f') => {
+                let row = self.selected_row();
+                if row.is_current {
+                    self.note("already focused");
+                } else {
+                    return Some(Effect::Focus(row.info.pid));
+                }
+            }
             KeyCode::Char('g') => {
                 if self.pending_g {
                     self.selected = 0;
@@ -281,6 +386,75 @@ impl App {
             _ => {}
         }
         None
+    }
+
+    fn handle_actions_key(&mut self, key: KeyEvent) -> Option<Effect> {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('a') | KeyCode::Char('q') => self.show_actions = false,
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.action_selected = (self.action_selected + 1).min(ACTION_ITEMS.len() - 1);
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.action_selected = self.action_selected.saturating_sub(1);
+            }
+            KeyCode::Enter => return self.run_action(self.action_selected),
+            KeyCode::Char(c) => {
+                if let Some(idx) = ACTION_ITEMS.iter().position(|item| item.key == c) {
+                    return self.run_action(idx);
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+
+    fn run_action(&mut self, idx: usize) -> Option<Effect> {
+        let row = self.selected_row();
+        let pid = row.info.pid;
+        let is_current = row.is_current;
+        let name_pid = format!("{} ({})", display_name(&row.info), pid);
+        let command = row.info.command.clone();
+        let exe = row.info.exe.clone();
+        match idx {
+            0 => {
+                self.show_actions = false;
+                if is_current {
+                    self.note("already focused");
+                    None
+                } else {
+                    Some(Effect::Focus(pid))
+                }
+            }
+            1 => {
+                self.show_actions = false;
+                Some(Effect::Copy(name_pid))
+            }
+            2 => match command {
+                Some(value) => {
+                    self.show_actions = false;
+                    Some(Effect::Copy(value))
+                }
+                None => {
+                    self.note("nothing to yank");
+                    None
+                }
+            },
+            3 => {
+                self.show_actions = false;
+                Some(Effect::Copy(pid.to_string()))
+            }
+            4 => match exe {
+                Some(value) => {
+                    self.show_actions = false;
+                    Some(Effect::Copy(value))
+                }
+                None => {
+                    self.note("nothing to yank");
+                    None
+                }
+            },
+            _ => None,
+        }
     }
 }
 
@@ -443,7 +617,7 @@ mod tests {
         let mut tree = sample_tree();
         tree.current.command = None;
         let mut app = App::new(&tree);
-        app.handle_key(key(KeyCode::Enter));
+        app.handle_key(key(KeyCode::Tab));
         for _ in 0..3 {
             app.handle_key(key(KeyCode::Char('j')));
         }
@@ -492,6 +666,133 @@ mod tests {
         assert_eq!(app.rows[app.selected].info.pid, 301);
         app.replace_tree(&sample_tree());
         assert_eq!(app.rows[app.selected].info.pid, 301);
+    }
+
+    #[test]
+    fn enter_returns_focus_effect_for_selected_row() {
+        let mut app = App::new(&sample_tree());
+        app.handle_key(key(KeyCode::Char('j')));
+        let effect = app.handle_key(key(KeyCode::Enter));
+        assert_eq!(effect, Some(Effect::Focus(301)));
+        let effect = app.handle_key(key(KeyCode::Char('f')));
+        assert_eq!(effect, Some(Effect::Focus(301)));
+    }
+
+    #[test]
+    fn enter_on_current_row_notes_already_focused() {
+        let mut app = App::new(&sample_tree());
+        let effect = app.handle_key(key(KeyCode::Enter));
+        assert_eq!(effect, None);
+        assert_eq!(app.status.as_deref(), Some("already focused"));
+    }
+
+    #[test]
+    fn ctrl_f_still_pages_down() {
+        let mut app = App::new(&sample_tree());
+        app.view_height = 4;
+        app.selected = 0;
+        app.handle_key(ctrl(KeyCode::Char('f')));
+        assert_eq!(app.selected, 4);
+    }
+
+    #[test]
+    fn apply_focus_pushes_stack_and_reselects_current() {
+        let mut app = App::new(&sample_tree());
+        let mut focused = sample_tree();
+        focused.current = proc(301, 300, "worker");
+        focused.ancestors = vec![
+            proc(1, 0, "init"),
+            proc(200, 1, "bash"),
+            proc(300, 200, "ph"),
+        ];
+        focused.children = vec![];
+        app.apply_focus(&focused);
+        assert_eq!(app.focused_pid(), 301);
+        assert_eq!(app.selected, 3);
+        assert_eq!(app.breadcrumb().as_deref(), Some("ph > worker"));
+    }
+
+    #[test]
+    fn esc_pops_focus_stack_and_restores() {
+        let mut app = App::new(&sample_tree());
+        let mut focused = sample_tree();
+        focused.current = proc(301, 300, "worker");
+        focused.ancestors = vec![
+            proc(1, 0, "init"),
+            proc(200, 1, "bash"),
+            proc(300, 200, "ph"),
+        ];
+        focused.children = vec![];
+        app.apply_focus(&focused);
+        let effect = app.handle_key(key(KeyCode::Esc));
+        assert_eq!(effect, Some(Effect::Restore(300)));
+        assert_eq!(app.breadcrumb(), None);
+        assert_eq!(app.handle_key(key(KeyCode::Backspace)), None);
+    }
+
+    #[test]
+    fn actions_popup_navigates_and_runs_highlighted() {
+        let mut app = App::new(&sample_tree());
+        app.handle_key(key(KeyCode::Char('j')));
+        app.handle_key(key(KeyCode::Char('a')));
+        assert!(app.show_actions);
+        app.handle_key(key(KeyCode::Char('j')));
+        app.handle_key(key(KeyCode::Char('j')));
+        app.handle_key(key(KeyCode::Char('j')));
+        app.handle_key(key(KeyCode::Char('j')));
+        app.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(app.action_selected, ACTION_ITEMS.len() - 1);
+        let effect = app.handle_key(key(KeyCode::Enter));
+        assert_eq!(effect, None);
+        assert_eq!(app.status.as_deref(), Some("nothing to yank"));
+        assert!(app.show_actions);
+        app.handle_key(key(KeyCode::Esc));
+        assert!(!app.show_actions);
+    }
+
+    #[test]
+    fn actions_popup_hotkeys() {
+        let mut app = App::new(&sample_tree());
+        app.handle_key(key(KeyCode::Char('a')));
+        let effect = app.handle_key(key(KeyCode::Char('p')));
+        assert_eq!(effect, Some(Effect::Copy("300".to_string())));
+        assert!(!app.show_actions);
+
+        app.handle_key(key(KeyCode::Char('a')));
+        let effect = app.handle_key(key(KeyCode::Char('y')));
+        assert_eq!(effect, Some(Effect::Copy("ph (300)".to_string())));
+
+        app.handle_key(key(KeyCode::Char('a')));
+        let effect = app.handle_key(key(KeyCode::Char('c')));
+        assert_eq!(
+            effect,
+            Some(Effect::Copy("/usr/local/bin/ph 300".to_string()))
+        );
+
+        app.handle_key(key(KeyCode::Char('j')));
+        app.handle_key(key(KeyCode::Char('a')));
+        let effect = app.handle_key(key(KeyCode::Char('f')));
+        assert_eq!(effect, Some(Effect::Focus(301)));
+        assert!(!app.show_actions);
+    }
+
+    #[test]
+    fn actions_popup_focus_on_current_notes_already_focused() {
+        let mut app = App::new(&sample_tree());
+        app.handle_key(key(KeyCode::Char('a')));
+        let effect = app.handle_key(key(KeyCode::Enter));
+        assert_eq!(effect, None);
+        assert_eq!(app.status.as_deref(), Some("already focused"));
+        assert!(!app.show_actions);
+    }
+
+    #[test]
+    fn help_takes_precedence_over_actions() {
+        let mut app = App::new(&sample_tree());
+        app.handle_key(key(KeyCode::Char('a')));
+        app.show_help = true;
+        assert_eq!(app.handle_key(key(KeyCode::Char('p'))), None);
+        assert!(app.show_actions);
     }
 
     #[test]

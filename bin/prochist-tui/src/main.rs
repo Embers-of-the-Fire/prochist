@@ -67,7 +67,7 @@ fn main() -> ExitCode {
         }
     };
 
-    match run(provider.as_ref(), pid, tree) {
+    match run(provider.as_ref(), tree) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("phi: error: {e}");
@@ -103,7 +103,7 @@ fn install_panic_hook() {
     }));
 }
 
-fn run(provider: &dyn ProcessProvider, pid: Pid, tree: ProcessTree) -> io::Result<()> {
+fn run(provider: &dyn ProcessProvider, tree: ProcessTree) -> io::Result<()> {
     let _guard = TerminalGuard::enter()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     terminal.clear()?;
@@ -118,29 +118,57 @@ fn run(provider: &dyn ProcessProvider, pid: Pid, tree: ProcessTree) -> io::Resul
             if key.kind != KeyEventKind::Press {
                 continue;
             }
-            if key.code == KeyCode::Char('r') && !app.show_help && app.focus == Focus::Tree {
-                refresh(provider, pid, &mut app);
+            if key.code == KeyCode::Char('r')
+                && !app.show_help
+                && !app.show_actions
+                && app.focus == Focus::Tree
+            {
+                refresh(provider, &mut app);
                 continue;
             }
-            if let Some(Effect::Copy(text)) = app.handle_key(key) {
-                match clipboard::copy(&text) {
+            match app.handle_key(key) {
+                Some(Effect::Copy(text)) => match clipboard::copy(&text) {
                     Ok(()) => app.note(format!("yanked: {}", truncate(&text, 40))),
                     Err(e) => app.note(format!("yank failed: {e}")),
-                }
+                },
+                Some(Effect::Focus(pid)) => focus_on(provider, pid, true, &mut app),
+                Some(Effect::Restore(pid)) => focus_on(provider, pid, false, &mut app),
+                None => {}
             }
         }
     }
     Ok(())
 }
 
-fn refresh(provider: &dyn ProcessProvider, pid: Pid, app: &mut App) {
-    match provider.snapshot().map(|s| build_tree(&s, pid)) {
-        Ok(Ok(tree)) => {
+fn rebuild(provider: &dyn ProcessProvider, pid: Pid) -> Result<ProcessTree, String> {
+    let snapshot = provider
+        .snapshot()
+        .map_err(|e| format!("cannot enumerate processes: {e}"))?;
+    build_tree(&snapshot, pid).map_err(|TreeError::NotFound(pid)| format!("no such process: {pid}"))
+}
+
+fn focus_on(provider: &dyn ProcessProvider, pid: Pid, push: bool, app: &mut App) {
+    match rebuild(provider, pid) {
+        Ok(tree) => {
+            if push {
+                app.apply_focus(&tree);
+            } else {
+                app.apply_restore(&tree);
+            }
+            app.note(format!("focused: {pid}"));
+        }
+        Err(message) => app.note(message),
+    }
+}
+
+fn refresh(provider: &dyn ProcessProvider, app: &mut App) {
+    let pid = app.focused_pid();
+    match rebuild(provider, pid) {
+        Ok(tree) => {
             app.replace_tree(&tree);
             app.note("refreshed");
         }
-        Ok(Err(TreeError::NotFound(pid))) => app.note(format!("no such process: {pid}")),
-        Err(e) => app.note(format!("refresh failed: {e}")),
+        Err(message) => app.note(message),
     }
 }
 
