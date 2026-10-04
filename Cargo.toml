@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/prochist-core", "bin/prochist-cli"]
+members = ["crates/prochist-core", "bin/prochist-cli", "bin/prochist-tui"]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,6 +10,8 @@ repository = "https://github.com/y4nettechi/prochist"
 
 [workspace.dependencies]
 clap = { version = "4.6", features = ["derive"] }
+crossterm = "0.29"
+ratatui = "0.30"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 trycmd = "1.2"

@@ -5,6 +5,7 @@ prochist is a Rust workspace with the following layout:
 ```
 crates/prochist-core   # data model, provider trait, tree building, platform backends
 bin/prochist-cli       # the `ph` binary (clap 4 derive) + tree rendering
+bin/prochist-tui       # the `phi` binary — interactive ratatui/crossterm frontend
 docs/                  # design notes
 ```
 
@@ -30,3 +31,11 @@ same `ProcessTree` model differently.
 Mocked input for end-to-end tests is injected via the hidden flag
 `ph --snapshot <FILE.json>`, which swaps the OS provider for `MockProvider`.
 The flag is hidden from `--help` and intended for testing only.
+
+## prochist-tui
+
+`phi` is the interactive frontend (ratatui + crossterm) over the same
+`ProcessTree` model. Key handling lives in `app.rs` as pure state transitions
+(returning `Effect`s such as `Copy`); side effects (terminal I/O, clipboard)
+stay in `main.rs`/`clipboard.rs` so the app logic is unit-testable. Yanking
+uses the OSC 52 escape sequence instead of a clipboard crate. See `tui.md`.
