@@ -6,6 +6,5 @@ stdout = """
 ├── bash (200)
 └── ph (300)
     ├── worker (301)
-    │   /usr/bin/worker --daemon
     └── logger (302)
 """

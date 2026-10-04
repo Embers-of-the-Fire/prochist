@@ -59,6 +59,7 @@ mod tests {
             ppid,
             name: name.to_string(),
             command: None,
+            exe: None,
         }
     }
 

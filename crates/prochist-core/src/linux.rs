@@ -22,6 +22,7 @@ impl ProcessProvider for LinuxProvider {
             match parse_stat(pid, &entry.path().join("stat")) {
                 Ok(mut info) => {
                     info.command = read_command(&entry.path());
+                    info.exe = read_exe(&entry.path());
                     processes.push(info);
                 }
                 Err(_) => continue,
@@ -31,22 +32,25 @@ impl ProcessProvider for LinuxProvider {
     }
 }
 
+fn read_exe(proc_dir: &Path) -> Option<String> {
+    fs::read_link(proc_dir.join("exe"))
+        .ok()
+        .map(|p| p.display().to_string())
+}
+
 fn read_command(proc_dir: &Path) -> Option<String> {
-    if let Ok(raw) = fs::read(proc_dir.join("cmdline")) {
-        let cmdline = raw
-            .split(|b| *b == 0)
-            .filter(|arg| !arg.is_empty())
-            .map(|arg| String::from_utf8_lossy(arg).into_owned())
-            .collect::<Vec<_>>()
-            .join(" ");
-        if !cmdline.is_empty() {
-            return Some(cmdline);
-        }
+    let raw = fs::read(proc_dir.join("cmdline")).ok()?;
+    let cmdline = raw
+        .split(|b| *b == 0)
+        .filter(|arg| !arg.is_empty())
+        .map(|arg| String::from_utf8_lossy(arg).into_owned())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if cmdline.is_empty() {
+        None
+    } else {
+        Some(cmdline)
     }
-    if let Ok(exe) = fs::read_link(proc_dir.join("exe")) {
-        return Some(exe.display().to_string());
-    }
-    None
 }
 
 fn parse_stat(pid: u32, path: &Path) -> io::Result<ProcessInfo> {
@@ -68,6 +72,7 @@ fn parse_stat(pid: u32, path: &Path) -> io::Result<ProcessInfo> {
         ppid,
         name,
         command: None,
+        exe: None,
     })
 }
 

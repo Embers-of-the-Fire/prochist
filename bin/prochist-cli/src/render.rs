@@ -1,26 +1,81 @@
 use std::fmt::Write as _;
+use std::path::Path;
 
 use prochist_core::{ProcessInfo, ProcessTree};
 
-fn node(out: &mut String, indent: usize, p: &ProcessInfo, is_last: bool) {
-    let base = "    ".repeat(indent);
-    let connector = if is_last { "└── " } else { "├── " };
-    let _ = writeln!(out, "{base}{connector}{} ({})", p.name, p.pid);
-    if let Some(command) = &p.command {
-        let continuation = if is_last { "    " } else { "│   " };
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RenderOptions {
+    pub ascii: bool,
+    pub long: bool,
+    pub executable: bool,
+}
+
+struct Glyphs {
+    branch: &'static str,
+    last: &'static str,
+    pipe: &'static str,
+    blank: &'static str,
+}
+
+const UNICODE: Glyphs = Glyphs {
+    branch: "├── ",
+    last: "└── ",
+    pipe: "│   ",
+    blank: "    ",
+};
+
+const ASCII: Glyphs = Glyphs {
+    branch: "|-- ",
+    last: "+-- ",
+    pipe: "|   ",
+    blank: "    ",
+};
+
+fn name_of(p: &ProcessInfo, executable: bool) -> String {
+    match &p.exe {
+        Some(exe) if executable => exe.clone(),
+        Some(exe) => Path::new(exe)
+            .file_name()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_else(|| p.name.clone()),
+        None => p.name.clone(),
+    }
+}
+
+fn node(
+    out: &mut String,
+    g: &Glyphs,
+    indent: usize,
+    p: &ProcessInfo,
+    is_last: bool,
+    opts: &RenderOptions,
+) {
+    let base = g.blank.repeat(indent);
+    let connector = if is_last { g.last } else { g.branch };
+    let _ = writeln!(
+        out,
+        "{base}{connector}{} ({})",
+        name_of(p, opts.executable),
+        p.pid
+    );
+    if opts.long
+        && let Some(command) = &p.command
+    {
+        let continuation = if is_last { g.blank } else { g.pipe };
         let _ = writeln!(out, "{base}{continuation}{command}");
     }
 }
 
-pub fn render(tree: &ProcessTree) -> String {
+pub fn render(tree: &ProcessTree, opts: &RenderOptions) -> String {
+    let g = if opts.ascii { &ASCII } else { &UNICODE };
     let mut out = String::new();
     for ancestor in &tree.ancestors {
-        node(&mut out, 0, ancestor, false);
+        node(&mut out, g, 0, ancestor, false, opts);
     }
-    node(&mut out, 0, &tree.current, true);
+    node(&mut out, g, 0, &tree.current, true, opts);
     let last = tree.children.len().saturating_sub(1);
     for (i, child) in tree.children.iter().enumerate() {
-        node(&mut out, 1, child, i == last);
+        node(&mut out, g, 1, child, i == last, opts);
     }
     out
 }
@@ -36,31 +91,61 @@ mod tests {
             ppid,
             name: name.to_string(),
             command: None,
+            exe: None,
+        }
+    }
+
+    fn sample() -> ProcessTree {
+        let mut worker = proc(301, 300, "worker");
+        worker.exe = Some("/usr/bin/worker".to_string());
+        worker.command = Some("/usr/bin/worker --daemon".to_string());
+        let mut current = proc(300, 200, "ph");
+        current.exe = Some("/usr/local/bin/ph".to_string());
+        current.command = Some("/usr/local/bin/ph 300".to_string());
+        let mut init = proc(1, 0, "init");
+        init.exe = Some("/sbin/init".to_string());
+        init.command = Some("/sbin/init splash".to_string());
+        ProcessTree {
+            ancestors: vec![init, proc(200, 1, "bash")],
+            current,
+            children: vec![worker, proc(302, 300, "logger")],
         }
     }
 
     #[test]
-    fn renders_layout_with_command_continuations() {
-        let mut worker = proc(301, 300, "worker");
-        worker.command = Some("/usr/bin/worker --daemon".to_string());
-        let tree = ProcessTree {
-            ancestors: vec![proc(1, 0, "init"), proc(200, 1, "bash")],
-            current: proc(300, 200, "ph"),
-            children: vec![worker, proc(302, 300, "logger")],
-        };
-        let expected = "├── init (1)\n├── bash (200)\n└── ph (300)\n    ├── worker (301)\n    │   /usr/bin/worker --daemon\n    └── logger (302)\n";
-        assert_eq!(render(&tree), expected);
+    fn default_shows_binary_names_only() {
+        let expected = "├── init (1)\n├── bash (200)\n└── ph (300)\n    ├── worker (301)\n    └── logger (302)\n";
+        assert_eq!(render(&sample(), &RenderOptions::default()), expected);
     }
 
     #[test]
-    fn shows_current_command_line() {
-        let mut current = proc(300, 200, "ph");
-        current.command = Some("target/debug/ph 300".to_string());
-        let tree = ProcessTree {
-            ancestors: vec![],
-            current,
-            children: vec![],
+    fn long_shows_full_command_continuations() {
+        let opts = RenderOptions {
+            long: true,
+            ..Default::default()
         };
-        assert_eq!(render(&tree), "└── ph (300)\n    target/debug/ph 300\n");
+        let expected = "├── init (1)\n│   /sbin/init splash\n├── bash (200)\n└── ph (300)\n    /usr/local/bin/ph 300\n    ├── worker (301)\n    │   /usr/bin/worker --daemon\n    └── logger (302)\n";
+        assert_eq!(render(&sample(), &opts), expected);
+    }
+
+    #[test]
+    fn executable_replaces_name_with_full_path() {
+        let opts = RenderOptions {
+            executable: true,
+            ..Default::default()
+        };
+        let expected = "├── /sbin/init (1)\n├── bash (200)\n└── /usr/local/bin/ph (300)\n    ├── /usr/bin/worker (301)\n    └── logger (302)\n";
+        assert_eq!(render(&sample(), &opts), expected);
+    }
+
+    #[test]
+    fn ascii_uses_ascii_glyphs() {
+        let opts = RenderOptions {
+            ascii: true,
+            long: true,
+            ..Default::default()
+        };
+        let expected = "|-- init (1)\n|   /sbin/init splash\n|-- bash (200)\n+-- ph (300)\n    /usr/local/bin/ph 300\n    |-- worker (301)\n    |   /usr/bin/worker --daemon\n    +-- logger (302)\n";
+        assert_eq!(render(&sample(), &opts), expected);
     }
 }

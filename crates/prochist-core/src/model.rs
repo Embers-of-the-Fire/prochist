@@ -9,6 +9,8 @@ pub struct ProcessInfo {
     pub name: String,
     #[serde(default)]
     pub command: Option<String>,
+    #[serde(default)]
+    pub exe: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

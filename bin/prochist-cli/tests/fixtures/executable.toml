@@ -1,0 +1,9 @@
+bin.name = "ph"
+args = "--snapshot tests/fixtures/rich.snapshot.json -E 300"
+stdout = """
+├── /sbin/init (1)
+├── /usr/bin/bash (200)
+└── /usr/local/bin/ph (300)
+    ├── /usr/bin/worker (301)
+    └── logger (302)
+"""

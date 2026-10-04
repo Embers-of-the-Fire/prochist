@@ -1,0 +1,7 @@
+[
+  {"pid": 1, "ppid": 0, "name": "init", "exe": "/sbin/init", "command": "/sbin/init splash"},
+  {"pid": 200, "ppid": 1, "name": "bash", "exe": "/usr/bin/bash", "command": "/usr/bin/bash -l"},
+  {"pid": 300, "ppid": 200, "name": "ph", "exe": "/usr/local/bin/ph", "command": "/usr/local/bin/ph 300"},
+  {"pid": 301, "ppid": 300, "name": "worker", "exe": "/usr/bin/worker", "command": "/usr/bin/worker --daemon"},
+  {"pid": 302, "ppid": 300, "name": "logger"}
+]
