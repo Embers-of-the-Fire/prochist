@@ -18,8 +18,32 @@ against a fixed tree.
   bold), and its children — same shape as `ph` output, one row per process.
 - **Details** (bottom, fixed 7 rows): PID, PPID, Name, Command, Executable of
   the selected row.
-- **Status bar** (bottom line): mode tag (`TREE`/`DETAIL`/`HELP`), cursor
-  position, transient messages (yank confirmations, refresh errors).
+- **Status bar** (bottom line): mode tag (`TREE`/`DETAIL`/`ACTIONS`/`HELP`),
+  cursor position, focus breadcrumb when re-rooted (e.g. `ph > worker`), and
+  transient messages (yank confirmations, refresh errors).
+
+## Focus mode
+
+`Enter` (or `f`) on a tree row re-roots the whole view around that process —
+the same tree `ph <pid>` would print. `Esc` / `Backspace` walks back up the
+focus stack to the previously focused process. The status bar shows a
+breadcrumb of the focus chain, and `r` refreshes around the *focused* PID, not
+the startup one. Focusing a process that has just exited shows an error in the
+status bar and leaves the view unchanged.
+
+## Action menu
+
+`a` opens a popup over the selected row with per-process actions. Move with
+`j`/`k` and run with `Enter`, or press the action's hotkey directly. `Esc`
+(or `a`/`q`) closes it.
+
+| Hotkey | Action |
+| --- | --- |
+| `f` | focus this process (same as `Enter` on the row) |
+| `y` | yank `name (pid)` |
+| `c` | yank the command line |
+| `p` | yank the PID |
+| `e` | yank the executable path |
 
 ## Key bindings
 
@@ -31,13 +55,16 @@ against a fixed tree.
 | `Ctrl-f` / `Ctrl-b` | tree | full page down/up |
 | `gg` / `G` | tree | first / last row |
 | `Home` / `End` | tree | first / last row |
-| `Tab` / `i` / `Enter` | tree | focus the details pane |
+| `Enter` / `f` | tree | focus the selected process (re-root the tree) |
+| `Esc` / `Backspace` | tree | return to the previous focus |
+| `a` | tree | open the action menu for the selected row |
+| `Tab` / `i` | tree | focus the details pane |
 | `Esc` / `q` | details | back to the tree pane |
 | `y` | tree | yank `name (pid)` of the selected row |
 | `Y` | tree | yank the full command line (falls back to exe path) |
 | `y` | details | yank the selected field value |
 | `Y` | details | yank `name (pid)` |
-| `r` | tree | refresh the process snapshot |
+| `r` | tree | refresh the process snapshot (around the focused PID) |
 | `?` | anywhere | toggle the help screen (scrollable with `j`/`k`) |
 | `q` | tree | quit |
 

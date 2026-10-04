@@ -4,7 +4,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 
-use crate::app::{App, FIELD_LABELS, Focus, HELP_LINES, fields};
+use crate::app::{ACTION_ITEMS, App, FIELD_LABELS, Focus, HELP_LINES, fields};
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let chunks = Layout::vertical([
@@ -16,6 +16,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_tree(frame, app, chunks[0]);
     draw_details(frame, app, chunks[1]);
     draw_status(frame, app, chunks[2]);
+    if app.show_actions {
+        draw_actions(frame, app, frame.area());
+    }
     if app.show_help {
         draw_help(frame, app, frame.area());
     }
@@ -26,7 +29,7 @@ fn draw_tree(frame: &mut Frame, app: &mut App, area: Rect) {
     app.view_height = height;
     app.ensure_visible(height);
 
-    let focused = app.focus == Focus::Tree && !app.show_help;
+    let focused = app.focus == Focus::Tree && !app.show_help && !app.show_actions;
     let lines: Vec<Line> = app
         .rows
         .iter()
@@ -50,7 +53,7 @@ fn draw_tree(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn draw_details(frame: &mut Frame, app: &mut App, area: Rect) {
-    let focused = app.focus == Focus::Detail && !app.show_help;
+    let focused = app.focus == Focus::Detail && !app.show_help && !app.show_actions;
     let values = fields(&app.rows[app.selected].info);
     let lines: Vec<Line> = FIELD_LABELS
         .iter()
@@ -83,6 +86,8 @@ fn draw_details(frame: &mut Frame, app: &mut App, area: Rect) {
 fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     let mode = if app.show_help {
         "HELP"
+    } else if app.show_actions {
+        "ACTIONS"
     } else {
         match app.focus {
             Focus::Tree => "TREE",
@@ -101,13 +106,23 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
         .status
         .clone()
         .unwrap_or_else(|| " ?: help  q: quit".to_string());
-    let status = Line::from(vec![
+    let separator = || Span::styled(" │ ", Style::default().fg(Color::DarkGray));
+    let mut spans = vec![
         mode_tag,
         Span::raw(position),
-        Span::styled(" │ ", Style::default().fg(Color::DarkGray)),
+        separator(),
         Span::raw(message),
-    ]);
-    frame.render_widget(status, area);
+    ];
+    if let Some(crumb) = app.breadcrumb() {
+        let used: usize = spans.iter().map(|s| s.width()).sum();
+        let budget = (area.width as usize).saturating_sub(used + 3);
+        let crumb = truncate(&crumb, budget);
+        if !crumb.is_empty() {
+            spans.push(separator());
+            spans.push(Span::styled(crumb, Style::default().fg(Color::Cyan)));
+        }
+    }
+    frame.render_widget(Line::from(spans), area);
 }
 
 fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
@@ -119,6 +134,49 @@ fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
         .wrap(Wrap { trim: false })
         .scroll((app.help_scroll, 0));
     frame.render_widget(help, popup);
+}
+
+fn draw_actions(frame: &mut Frame, app: &App, area: Rect) {
+    let width = 36u16.min(area.width);
+    let height = (ACTION_ITEMS.len() as u16 + 2).min(area.height);
+    let popup = Rect {
+        x: area.x + area.width.saturating_sub(width) / 2,
+        y: area.y + area.height.saturating_sub(height) / 2,
+        width,
+        height,
+    };
+    frame.render_widget(Clear, popup);
+    let lines: Vec<Line> = ACTION_ITEMS
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let text = format!(" {}  {}", item.key, item.label);
+            let style = if i == app.action_selected {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            };
+            Line::styled(text, style)
+        })
+        .collect();
+    let actions = Paragraph::new(lines).block(
+        Block::bordered()
+            .title(" Actions ")
+            .border_style(Style::default().fg(Color::Cyan)),
+    );
+    frame.render_widget(actions, popup);
+}
+
+fn truncate(text: &str, budget: usize) -> String {
+    if text.chars().count() <= budget {
+        return text.to_string();
+    }
+    if budget == 0 {
+        return String::new();
+    }
+    let mut out: String = text.chars().take(budget.saturating_sub(1)).collect();
+    out.push('…');
+    out
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
@@ -191,6 +249,52 @@ mod tests {
         assert!(text.contains("/usr/local/bin/ph 300"));
         assert!(text.contains("TREE"));
         assert!(text.contains("3/4"));
+    }
+
+    #[test]
+    fn renders_actions_popup() {
+        let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+        let mut app = App::new(&sample_tree());
+        app.show_actions = true;
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        let text = buffer_text(&terminal);
+        assert!(text.contains("Actions"));
+        assert!(text.contains("Focus this process"));
+        assert!(text.contains("Yank command line"));
+        assert!(text.contains("ACTIONS"));
+    }
+
+    #[test]
+    fn renders_breadcrumb_after_focus() {
+        let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+        let mut app = App::new(&sample_tree());
+        let mut focused = sample_tree();
+        focused.current = proc(301, 300, "worker");
+        focused.ancestors = vec![
+            proc(1, 0, "init"),
+            proc(200, 1, "bash"),
+            proc(300, 200, "ph"),
+        ];
+        focused.children = vec![];
+        app.apply_focus(&focused);
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        let text = buffer_text(&terminal);
+        assert!(text.contains("ph > worker"));
+    }
+
+    #[test]
+    fn status_message_survives_long_breadcrumb() {
+        let mut terminal = Terminal::new(TestBackend::new(50, 14)).unwrap();
+        let mut app = App::new(&sample_tree());
+        for _ in 0..10 {
+            app.apply_focus(&sample_tree());
+        }
+        app.note("no such process");
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        let text = buffer_text(&terminal);
+        let status_line = text.lines().nth(13).unwrap();
+        assert!(status_line.contains("no such process"));
+        assert!(status_line.chars().count() <= 50);
     }
 
     #[test]
