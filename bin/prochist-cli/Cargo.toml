@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
-prochist-core = { path = "../../crates/prochist-core" }
+prochist-core = { version = "0.1.0", path = "../../crates/prochist-core" }
 
 [dev-dependencies]
 trycmd.workspace = true
