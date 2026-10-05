@@ -68,8 +68,12 @@ Full CLI reference: [docs/cli.md](docs/cli.md).
 ```
 
 ```sh
-cargo run --bin phi -- [PID]
+cargo run --bin phi -- [-p PID]
+cargo run --bin phi -- -f FILE|DIR
 ```
+
+`phi -f PATH` opens the same holder list as `ph -f`, interactively: pick a
+process and press `Enter` to dive into its tree, `Esc` to come back.
 
 Vim-like navigation (`j`/`k`, `Ctrl-d`/`u`, `gg`/`G`), a details pane with
 field-wise yanking (`y`/`Y`, via OSC 52), and a help screen (`?`). Full keymap:

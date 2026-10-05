@@ -4,7 +4,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph, Wrap};
 
-use crate::app::{ACTION_ITEMS, App, FIELD_LABELS, Focus, HELP_LINES, fields};
+use crate::app::{ACTION_ITEMS, App, FIELD_LABELS, Focus, HELP_LINES, View, display_name, fields};
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let chunks = Layout::vertical([
@@ -13,7 +13,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Constraint::Length(1),
     ])
     .split(frame.area());
-    draw_tree(frame, app, chunks[0]);
+    match app.view {
+        View::Tree => draw_tree(frame, app, chunks[0]),
+        View::Holders => draw_holders(frame, app, chunks[0]),
+    }
     draw_details(frame, app, chunks[1]);
     draw_status(frame, app, chunks[2]);
     if app.show_actions {
@@ -52,9 +55,48 @@ fn draw_tree(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(tree, area);
 }
 
+fn draw_holders(frame: &mut Frame, app: &mut App, area: Rect) {
+    let height = area.height.saturating_sub(2);
+    app.view_height = height;
+    app.ensure_visible(height);
+
+    let focused = app.focus == Focus::Tree && !app.show_help && !app.show_actions;
+    let Some(state) = &app.holders else {
+        return;
+    };
+    let count = state.holders.len();
+    let lines: Vec<Line> = state
+        .holders
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let connector = if i + 1 == count {
+                "└── "
+            } else {
+                "├── "
+            };
+            let style = if i == state.selected && focused {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            };
+            Line::styled(format!("{connector}{} ({})", display_name(p), p.pid), style)
+        })
+        .collect();
+
+    let title = format!(" Holders of {} ", state.path.display());
+    let list = Paragraph::new(lines)
+        .block(Block::bordered().title(title))
+        .scroll((state.scroll, 0));
+    frame.render_widget(list, area);
+}
+
 fn draw_details(frame: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focus == Focus::Detail && !app.show_help && !app.show_actions;
-    let values = fields(&app.rows[app.selected].info);
+    let values = app
+        .selected_info()
+        .map(fields)
+        .unwrap_or_else(|| vec![None; FIELD_LABELS.len()]);
     let lines: Vec<Line> = FIELD_LABELS
         .iter()
         .zip(values)
@@ -89,9 +131,10 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     } else if app.show_actions {
         "ACTIONS"
     } else {
-        match app.focus {
-            Focus::Tree => "TREE",
-            Focus::Detail => "DETAIL",
+        match (app.view, app.focus) {
+            (View::Holders, Focus::Tree) => "HOLDERS",
+            (_, Focus::Tree) => "TREE",
+            (_, Focus::Detail) => "DETAIL",
         }
     };
     let mode_tag = Span::styled(
@@ -101,7 +144,8 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
             .bg(Color::Cyan)
             .add_modifier(Modifier::BOLD),
     );
-    let position = format!(" {}/{}", app.selected + 1, app.rows.len());
+    let (index, total) = app.position();
+    let position = format!(" {index}/{total}");
     let message = app
         .status
         .clone()
@@ -307,5 +351,49 @@ mod tests {
         let text = buffer_text(&terminal);
         assert!(text.contains("Help (? to close)"));
         assert!(text.contains("half page down"));
+    }
+
+    fn holders_app() -> App {
+        use std::path::PathBuf;
+        App::new_holders(
+            PathBuf::from("/var/log/app.log"),
+            vec![proc(123, 1, "vim"), proc(456, 1, "code")],
+        )
+    }
+
+    #[test]
+    fn renders_holders_view() {
+        let mut terminal = Terminal::new(TestBackend::new(50, 14)).unwrap();
+        let mut app = holders_app();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        let text = buffer_text(&terminal);
+        assert!(text.contains("Holders of /var/log/app.log"));
+        assert!(text.contains("├── vim (123)"));
+        assert!(text.contains("└── code (456)"));
+        assert!(text.contains("HOLDERS"));
+        assert!(text.contains("1/2"));
+    }
+
+    #[test]
+    fn renders_holders_breadcrumb_after_focus() {
+        let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+        let mut app = holders_app();
+        app.enter_tree_from_holders(&sample_tree());
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        let text = buffer_text(&terminal);
+        assert!(text.contains("/var/log/app.log > ph"));
+        assert!(text.contains("TREE"));
+    }
+
+    #[test]
+    fn renders_empty_holders_after_refresh() {
+        let mut terminal = Terminal::new(TestBackend::new(70, 14)).unwrap();
+        let mut app = holders_app();
+        app.replace_holders(Vec::new());
+        app.note("no process has /var/log/app.log open");
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        let text = buffer_text(&terminal);
+        assert!(text.contains("0/0"));
+        assert!(text.contains("no process has /var/log/app.log open"));
     }
 }

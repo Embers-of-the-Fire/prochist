@@ -8,7 +8,7 @@ Rust workspace. `ph` — prints the process tree around a PID (`-p`) or the proc
 - `cargo test -p prochist-cli` — end-to-end only
 - Bless trycmd fixtures after intentional output changes: `TRYCMD=overwrite cargo test`
 - Run the binary: `cargo run --bin ph -- [flags] [-p PID]` or `cargo run --bin ph -- -f FILE|DIR`
-- Run the TUI: `cargo run --bin phi -- [PID]`
+- Run the TUI: `cargo run --bin phi -- [-p PID]` or `cargo run --bin phi -- -f FILE|DIR`
 
 ## Layout / boundaries
 

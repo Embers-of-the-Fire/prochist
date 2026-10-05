@@ -5,15 +5,18 @@
 details pane for the selected process at the bottom.
 
 ```
-phi [PID]
+phi [-p PID]
+phi -f FILE|DIR
 ```
 
 PID defaults to the current process. The hidden `--snapshot <FILE>` flag works
 like in `ph` (MockProvider, testing only) and is handy for driving the TUI
 against a fixed tree.
 
-`phi` has no equivalent of `ph -f` (file-holder listing) yet; that mode is
-CLI-only for now.
+`phi -f PATH` starts in the holders view: the processes that have the file (or
+a file under the directory) open, listed under the queried path. If no process
+holds the path, `phi` exits 1 like `ph`. As with `ph`, `-f DIR` is Linux-only
+(the Windows backend uses Restart Manager, which accepts files only).
 
 ## Layout
 
@@ -21,9 +24,19 @@ CLI-only for now.
   bold), and its children — same shape as `ph` output, one row per process.
 - **Details** (bottom, fixed 7 rows): PID, PPID, Name, Command, Executable of
   the selected row.
-- **Status bar** (bottom line): mode tag (`TREE`/`DETAIL`/`ACTIONS`/`HELP`),
+- **Status bar** (bottom line): mode tag (`TREE`/`HOLDERS`/`DETAIL`/`ACTIONS`/`HELP`),
   cursor position, focus breadcrumb when re-rooted (e.g. `ph > worker`), and
   transient messages (yank confirmations, refresh errors).
+
+## Holders view
+
+Started with `phi -f PATH`. The top pane lists the holding processes under the
+queried path (`Holders of <path>`); navigation, yanking, the details pane, and
+the action menu work exactly as in the tree view. `Enter` (or `f`) on a holder
+re-roots into that process's tree — the breadcrumb shows e.g.
+`/var/log/app.log > vim` — and `Esc` / `Backspace` from there returns to the
+(cached) holders list. `r` re-queries which processes hold the path; if none
+remain, the list empties (position `0/0`) and a status note explains.
 
 ## Focus mode
 
@@ -68,6 +81,7 @@ status bar and leaves the view unchanged.
 | `y` | details | yank the selected field value |
 | `Y` | details | yank `name (pid)` |
 | `r` | tree | refresh the process snapshot (around the focused PID) |
+| `r` | holders | re-query which processes hold the path |
 | `?` | anywhere | toggle the help screen (scrollable with `j`/`k`) |
 | `q` | tree | quit |
 
