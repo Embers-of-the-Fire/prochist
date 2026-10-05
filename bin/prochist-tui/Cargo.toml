@@ -13,4 +13,4 @@ path = "src/main.rs"
 clap.workspace = true
 crossterm.workspace = true
 ratatui.workspace = true
-prochist-core = { version = "0.1.0", path = "../../crates/prochist-core" }
+prochist-core = { version = "0.2.0", path = "../../crates/prochist-core" }
