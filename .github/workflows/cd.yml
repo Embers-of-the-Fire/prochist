@@ -14,7 +14,6 @@ jobs:
   upload-assets:
     name: ${{ matrix.bin }}-${{ matrix.target }}
     runs-on: ${{ matrix.os }}
-    if: startsWith(github.event.release.name, format('{0}-v', matrix.package))
     strategy:
       fail-fast: false
       matrix:
@@ -36,17 +35,22 @@ jobs:
             target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
     timeout-minutes: 30
+    env:
+      PACKAGE_MATCH: ${{ startsWith(github.event.release.name, format('{0}-v', matrix.package)) }}
     steps:
       - name: Checkout repository
+        if: env.PACKAGE_MATCH == 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.release.tag_name }}
       - name: Install Rust toolchain
+        if: env.PACKAGE_MATCH == 'true'
         uses: dtolnay/rust-toolchain@stable
       - name: Static CRT on MSVC
+        if: env.PACKAGE_MATCH == 'true' && endsWith(matrix.target, 'windows-msvc')
         run: echo "RUSTFLAGS=-C target-feature=+crt-static" >> "${GITHUB_ENV}"
-        if: endsWith(matrix.target, 'windows-msvc')
       - name: Build and upload binary
+        if: env.PACKAGE_MATCH == 'true'
         uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: ${{ matrix.bin }}
