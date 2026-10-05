@@ -29,7 +29,7 @@ use app::{App, Effect, Focus, View};
     about = "Interactive TUI for the process tree around a PID"
 )]
 struct Cli {
-    /// Process ID to inspect [default: current process]
+    /// Process ID to inspect [default: browse all processes]
     #[arg(short = 'p', long, value_name = "PID", conflicts_with = "file")]
     pid: Option<u32>,
 
@@ -80,7 +80,9 @@ fn main() -> ExitCode {
         return finish(run(provider.as_ref(), app));
     }
 
-    let pid = cli.pid.unwrap_or_else(std::process::id);
+    let Some(pid) = cli.pid else {
+        return finish(run(provider.as_ref(), App::new_processes(processes)));
+    };
     let tree = match build_tree(&processes, pid) {
         Ok(tree) => tree,
         Err(TreeError::NotFound(pid)) => {
@@ -156,11 +158,13 @@ fn run(provider: &dyn ProcessProvider, mut app: App) -> io::Result<()> {
             if key.code == KeyCode::Char('r')
                 && !app.show_help
                 && !app.show_actions
+                && app.search.is_none()
                 && app.focus == Focus::Tree
             {
                 match app.view {
                     View::Tree => refresh(provider, &mut app),
                     View::Holders => refresh_holders(provider, &mut app),
+                    View::Processes => refresh_processes(provider, &mut app),
                 }
                 continue;
             }
@@ -192,6 +196,8 @@ fn focus_on(provider: &dyn ProcessProvider, pid: Pid, push: bool, app: &mut App)
                 app.apply_restore(&tree);
             } else if app.view == View::Holders {
                 app.enter_tree_from_holders(&tree);
+            } else if app.view == View::Processes {
+                app.enter_tree_from_processes(&tree);
             } else {
                 app.apply_focus(&tree);
             }
@@ -222,6 +228,16 @@ fn refresh_holders(provider: &dyn ProcessProvider, app: &mut App) {
             } else {
                 app.note("refreshed");
             }
+        }
+        Err(e) => app.note(format!("cannot enumerate processes: {e}")),
+    }
+}
+
+fn refresh_processes(provider: &dyn ProcessProvider, app: &mut App) {
+    match provider.snapshot() {
+        Ok(processes) => {
+            app.replace_processes(processes);
+            app.note("refreshed");
         }
         Err(e) => app.note(format!("cannot enumerate processes: {e}")),
     }

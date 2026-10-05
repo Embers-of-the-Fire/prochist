@@ -47,6 +47,7 @@ accepts file paths only); `ph -f DIR` exits 1 with an error.
 | `-E`, `--executable` | Show the full executable path instead of the binary name. |
 | `-M`, `--max-ancestors <N>` | Show at most `N` ancestors (the ones nearest to the target), replacing the omitted oldest with a `... x processes omitted` line. |
 | `-C`, `--max-children <N>` | Show at most `N` children (or file holders, in `-f` mode), ending the list with a `... x processes omitted` line. |
+| `-s`, `--search <QUERY>` | Not supported in the CLI: prints an error and exits `1`. Process search lives in the TUI (`phi`); to search from the shell use `ps aux \| grep <pattern>`. |
 
 ```
 $ ph -L -p 300
@@ -76,8 +77,8 @@ $ ph -M 2 -C 2 -p 300
 
 - `0` — tree or holder list printed.
 - `1` — the PID does not exist, no process has the path open, the path is
-  unreadable, the query is unsupported (e.g. `-f DIR` on Windows), or the
-  process snapshot could not be read.
+  unreadable, the query is unsupported (e.g. `-f DIR` on Windows, or
+  `--search`, which is TUI-only), or the process snapshot could not be read.
 
 ## Testing flag (hidden)
 

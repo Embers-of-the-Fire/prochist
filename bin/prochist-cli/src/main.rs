@@ -41,6 +41,10 @@ struct Cli {
     #[arg(short = 'C', long, value_name = "N")]
     max_children: Option<usize>,
 
+    /// Search processes (only available in the phi TUI)
+    #[arg(short = 's', long, value_name = "QUERY")]
+    search: Option<String>,
+
     /// Load a mocked process snapshot from a JSON file (testing only)
     #[arg(long, hide = true, value_name = "FILE")]
     snapshot: Option<PathBuf>,
@@ -48,6 +52,13 @@ struct Cli {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+
+    if cli.search.is_some() {
+        eprintln!(
+            "ph: error: --search is only available in the TUI (phi); use 'ps aux | grep <pattern>' to search from the CLI"
+        );
+        return ExitCode::FAILURE;
+    }
 
     let provider: Box<dyn ProcessProvider> = match &cli.snapshot {
         Some(path) => match MockProvider::from_json_file(path) {
