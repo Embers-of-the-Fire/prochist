@@ -13,7 +13,7 @@ Data model, `ProcessProvider` trait, and tree building. No user-facing output li
 - `provider.rs` — single-method trait `snapshot() -> io::Result<Vec<ProcessInfo>>`. All backends and mocks implement only this.
 - `tree.rs` — `build_tree(snapshot, pid)`. See invariants below.
 - `linux.rs` — dev/verification backend, parses `/proc/<pid>/stat` + `cmdline` + `exe` symlink. Reference implementation for new backends.
-- `windows.rs` — shipping target, stubbed `todo!()`. Plan in `docs/windows-notes.md` (Toolhelp snapshot; read the PID-reuse caveats before implementing).
+- `windows.rs` — shipping target, Toolhelp snapshot backend (`windows-sys`). PID-reuse caveats in `docs/windows-notes.md` (read before changing).
 - `mock.rs` — `MockProvider` from a JSON array of `ProcessInfo`; used by CLI e2e tests via `ph --snapshot`.
 
 ## `build_tree` invariants (tested in `tree.rs`)

@@ -8,3 +8,6 @@ description = "Process snapshot model, provider trait, and tree building for pro
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true

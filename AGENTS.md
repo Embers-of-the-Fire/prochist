@@ -25,7 +25,7 @@ Rust workspace. `ph` — prints the process tree around a PID. Windows is the sh
 ## Platform notes
 
 - `crates/prochist-core/src/lib.rs` has `compile_error!` for non-Linux/non-Windows targets.
-- `windows.rs` is stubbed with `todo!()`; Linux backend (parses `/proc/<pid>/stat`) is the reference. Windows plan and PID-reuse caveats: `docs/windows-notes.md`.
+- `windows.rs` is the shipping-target backend (Toolhelp snapshot); Linux backend (parses `/proc/<pid>/stat`) is the dev/verification reference. Windows PID-reuse caveats: `docs/windows-notes.md`. CI runs fmt/clippy/test on both `ubuntu-latest` and `windows-latest`.
 - `build_tree` already guards against ancestor cycles and missing parents — do not add redundant checks in providers.
 
 ## Conventions
