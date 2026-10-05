@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use prochist_core::{Pid, ProcessInfo, ProcessTree};
@@ -7,6 +7,18 @@ use prochist_core::{Pid, ProcessInfo, ProcessTree};
 pub enum Focus {
     Tree,
     Detail,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    Tree,
+    Holders,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FocusEntry {
+    Process(Pid, String),
+    Holders,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,7 +115,7 @@ pub const ACTION_ITEMS: [ActionItem; 5] = [
     },
 ];
 
-pub const HELP_LINES: [&str; 45] = [
+pub const HELP_LINES: [&str; 50] = [
     "phi - interactive process tree",
     "",
     "Navigation",
@@ -120,6 +132,11 @@ pub const HELP_LINES: [&str; 45] = [
     "  Enter / f       focus the selected process (re-root)",
     "  Esc / Backspace return to the previous focus",
     "  a               action menu for the selected row",
+    "",
+    "Holders view (phi -f PATH)",
+    "  Enter / f       focus the selected holder's process",
+    "  Esc / Backspace (in the focused tree) back to holders",
+    "  r               re-query which processes hold the path",
     "",
     "Action menu (a)",
     "  j / k           move through the actions",
@@ -151,11 +168,20 @@ pub const HELP_LINES: [&str; 45] = [
     "foot, tmux, iTerm2, Windows Terminal).",
 ];
 
+pub struct HoldersState {
+    pub path: PathBuf,
+    pub holders: Vec<ProcessInfo>,
+    pub selected: usize,
+    pub scroll: u16,
+}
+
 pub struct App {
     pub rows: Vec<Row>,
     pub selected: usize,
     pub scroll: u16,
     pub focus: Focus,
+    pub view: View,
+    pub holders: Option<HoldersState>,
     pub detail_selected: usize,
     pub show_help: bool,
     pub help_scroll: u16,
@@ -164,7 +190,7 @@ pub struct App {
     pub status: Option<String>,
     pub view_height: u16,
     pub should_quit: bool,
-    focus_stack: Vec<(Pid, String)>,
+    focus_stack: Vec<FocusEntry>,
     pending_g: bool,
 }
 
@@ -176,6 +202,8 @@ impl App {
             selected,
             scroll: 0,
             focus: Focus::Tree,
+            view: View::Tree,
+            holders: None,
             detail_selected: 0,
             show_help: false,
             help_scroll: 0,
@@ -187,6 +215,31 @@ impl App {
             focus_stack: Vec::new(),
             pending_g: false,
         }
+    }
+
+    pub fn new_holders(path: PathBuf, holders: Vec<ProcessInfo>) -> Self {
+        let mut app = Self::new(&ProcessTree {
+            ancestors: Vec::new(),
+            current: ProcessInfo {
+                pid: 0,
+                ppid: 0,
+                name: String::new(),
+                command: None,
+                exe: None,
+                open_files: Vec::new(),
+            },
+            children: Vec::new(),
+        });
+        app.rows = Vec::new();
+        app.selected = 0;
+        app.view = View::Holders;
+        app.holders = Some(HoldersState {
+            path,
+            holders,
+            selected: 0,
+            scroll: 0,
+        });
+        app
     }
 
     pub fn replace_tree(&mut self, tree: &ProcessTree) {
@@ -204,10 +257,30 @@ impl App {
     pub fn apply_focus(&mut self, tree: &ProcessTree) {
         let entry = {
             let current = self.current_row();
-            (current.info.pid, display_name(&current.info))
+            FocusEntry::Process(current.info.pid, display_name(&current.info))
         };
         self.focus_stack.push(entry);
         self.set_rows(tree);
+    }
+
+    pub fn enter_tree_from_holders(&mut self, tree: &ProcessTree) {
+        self.focus_stack.push(FocusEntry::Holders);
+        self.view = View::Tree;
+        self.set_rows(tree);
+    }
+
+    pub fn replace_holders(&mut self, holders: Vec<ProcessInfo>) {
+        let Some(state) = &mut self.holders else {
+            return;
+        };
+        let pid = state.holders.get(state.selected).map(|p| p.pid);
+        state.selected = pid
+            .and_then(|pid| holders.iter().position(|p| p.pid == pid))
+            .unwrap_or(0)
+            .min(holders.len().saturating_sub(1));
+        state.holders = holders;
+        state.scroll = 0;
+        self.detail_selected = 0;
     }
 
     pub fn apply_restore(&mut self, tree: &ProcessTree) {
@@ -232,7 +305,14 @@ impl App {
         let mut parts: Vec<String> = self
             .focus_stack
             .iter()
-            .map(|(_, name)| name.clone())
+            .map(|entry| match entry {
+                FocusEntry::Process(_, name) => name.clone(),
+                FocusEntry::Holders => self
+                    .holders
+                    .as_ref()
+                    .map(|h| h.path.display().to_string())
+                    .unwrap_or_default(),
+            })
             .collect();
         parts.push(display_name(&self.current_row().info));
         Some(parts.join(" > "))
@@ -240,6 +320,28 @@ impl App {
 
     pub fn note(&mut self, message: impl Into<String>) {
         self.status = Some(message.into());
+    }
+
+    pub fn selected_info(&self) -> Option<&ProcessInfo> {
+        match self.view {
+            View::Tree => self.rows.get(self.selected).map(|r| &r.info),
+            View::Holders => {
+                let state = self.holders.as_ref()?;
+                state.holders.get(state.selected)
+            }
+        }
+    }
+
+    pub fn position(&self) -> (usize, usize) {
+        match self.view {
+            View::Tree => (self.selected + 1, self.rows.len()),
+            View::Holders => match &self.holders {
+                Some(state) if !state.holders.is_empty() => {
+                    (state.selected + 1, state.holders.len())
+                }
+                _ => (0, 0),
+            },
+        }
     }
 
     fn selected_row(&self) -> &Row {
@@ -254,8 +356,45 @@ impl App {
     }
 
     fn move_by(&mut self, delta: i64) {
-        let last = self.rows.len() as i64 - 1;
-        self.selected = (self.selected as i64 + delta).clamp(0, last) as usize;
+        match self.view {
+            View::Tree => {
+                let last = self.rows.len() as i64 - 1;
+                self.selected = (self.selected as i64 + delta).clamp(0, last) as usize;
+            }
+            View::Holders => {
+                let Some(state) = &mut self.holders else {
+                    return;
+                };
+                if state.holders.is_empty() {
+                    state.selected = 0;
+                    return;
+                }
+                let last = state.holders.len() as i64 - 1;
+                state.selected = (state.selected as i64 + delta).clamp(0, last) as usize;
+            }
+        }
+    }
+
+    fn jump_to_start(&mut self) {
+        match self.view {
+            View::Tree => self.selected = 0,
+            View::Holders => {
+                if let Some(state) = &mut self.holders {
+                    state.selected = 0;
+                }
+            }
+        }
+    }
+
+    fn jump_to_end(&mut self) {
+        match self.view {
+            View::Tree => self.selected = self.rows.len() - 1,
+            View::Holders => {
+                if let Some(state) = &mut self.holders {
+                    state.selected = state.holders.len().saturating_sub(1);
+                }
+            }
+        }
     }
 
     fn half_page(&self) -> i64 {
@@ -268,11 +407,17 @@ impl App {
 
     pub fn ensure_visible(&mut self, height: u16) {
         let height = height.max(1);
-        let selected = self.selected as u16;
-        if selected < self.scroll {
-            self.scroll = selected;
-        } else if selected >= self.scroll + height {
-            self.scroll = selected - height + 1;
+        let (selected, scroll) = match self.view {
+            View::Tree => (self.selected as u16, &mut self.scroll),
+            View::Holders => match &mut self.holders {
+                Some(state) => (state.selected as u16, &mut state.scroll),
+                None => return,
+            },
+        };
+        if selected < *scroll {
+            *scroll = selected;
+        } else if selected >= *scroll + height {
+            *scroll = selected - height + 1;
         }
     }
 
@@ -288,9 +433,10 @@ impl App {
         if self.show_actions {
             return self.handle_actions_key(key);
         }
-        match self.focus {
-            Focus::Tree => self.handle_tree_key(key),
-            Focus::Detail => self.handle_detail_key(key),
+        match (self.view, self.focus) {
+            (View::Tree, Focus::Tree) => self.handle_tree_key(key),
+            (View::Holders, Focus::Tree) => self.handle_holders_key(key),
+            (_, Focus::Detail) => self.handle_detail_key(key),
         }
     }
 
@@ -314,11 +460,14 @@ impl App {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char('?') => self.show_help = true,
             KeyCode::Tab | KeyCode::Char('i') => self.focus = Focus::Detail,
-            KeyCode::Esc | KeyCode::Backspace => {
-                if let Some((pid, _)) = self.focus_stack.pop() {
-                    return Some(Effect::Restore(pid));
+            KeyCode::Esc | KeyCode::Backspace => match self.focus_stack.pop() {
+                Some(FocusEntry::Process(pid, _)) => return Some(Effect::Restore(pid)),
+                Some(FocusEntry::Holders) => {
+                    self.view = View::Holders;
+                    self.detail_selected = 0;
                 }
-            }
+                None => {}
+            },
             KeyCode::Char('a') => {
                 self.show_actions = true;
                 self.action_selected = 0;
@@ -339,14 +488,14 @@ impl App {
             }
             KeyCode::Char('g') => {
                 if self.pending_g {
-                    self.selected = 0;
+                    self.jump_to_start();
                     self.pending_g = false;
                 } else {
                     self.pending_g = true;
                 }
             }
-            KeyCode::Char('G') | KeyCode::End => self.selected = self.rows.len() - 1,
-            KeyCode::Home => self.selected = 0,
+            KeyCode::Char('G') | KeyCode::End => self.jump_to_end(),
+            KeyCode::Home => self.jump_to_start(),
             KeyCode::Char('y') => {
                 let row = self.selected_row();
                 return Some(Effect::Copy(format!(
@@ -358,6 +507,58 @@ impl App {
             KeyCode::Char('Y') => {
                 let info = &self.selected_row().info;
                 match info.command.clone().or_else(|| info.exe.clone()) {
+                    Some(value) => return Some(Effect::Copy(value)),
+                    None => self.note("nothing to yank"),
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+
+    fn handle_holders_key(&mut self, key: KeyEvent) -> Option<Effect> {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Char('q') => self.should_quit = true,
+            KeyCode::Char('?') => self.show_help = true,
+            KeyCode::Tab | KeyCode::Char('i') => self.focus = Focus::Detail,
+            KeyCode::Char('a') => {
+                self.show_actions = true;
+                self.action_selected = 0;
+            }
+            KeyCode::Char('j') | KeyCode::Down => self.move_by(1),
+            KeyCode::Char('k') | KeyCode::Up => self.move_by(-1),
+            KeyCode::Char('d') if ctrl => self.move_by(self.half_page()),
+            KeyCode::Char('u') if ctrl => self.move_by(-self.half_page()),
+            KeyCode::Char('f') if ctrl => self.move_by(self.page()),
+            KeyCode::Char('b') if ctrl => self.move_by(-self.page()),
+            KeyCode::Enter | KeyCode::Char('f') => {
+                if let Some(info) = self.selected_info() {
+                    return Some(Effect::Focus(info.pid));
+                }
+            }
+            KeyCode::Char('g') => {
+                if self.pending_g {
+                    self.jump_to_start();
+                    self.pending_g = false;
+                } else {
+                    self.pending_g = true;
+                }
+            }
+            KeyCode::Char('G') | KeyCode::End => self.jump_to_end(),
+            KeyCode::Home => self.jump_to_start(),
+            KeyCode::Char('y') => match self.selected_info() {
+                Some(info) => {
+                    let text = format!("{} ({})", display_name(info), info.pid);
+                    return Some(Effect::Copy(text));
+                }
+                None => self.note("nothing to yank"),
+            },
+            KeyCode::Char('Y') => {
+                let value = self
+                    .selected_info()
+                    .and_then(|info| info.command.clone().or_else(|| info.exe.clone()));
+                match value {
                     Some(value) => return Some(Effect::Copy(value)),
                     None => self.note("nothing to yank"),
                 }
@@ -380,19 +581,21 @@ impl App {
                 self.detail_selected = self.detail_selected.saturating_sub(1);
             }
             KeyCode::Char('y') => {
-                match fields(&self.selected_row().info)[self.detail_selected].clone() {
+                let value = self
+                    .selected_info()
+                    .and_then(|info| fields(info)[self.detail_selected].clone());
+                match value {
                     Some(value) => return Some(Effect::Copy(value)),
                     None => self.note("nothing to yank"),
                 }
             }
-            KeyCode::Char('Y') => {
-                let row = self.selected_row();
-                return Some(Effect::Copy(format!(
-                    "{} ({})",
-                    display_name(&row.info),
-                    row.info.pid
-                )));
-            }
+            KeyCode::Char('Y') => match self.selected_info() {
+                Some(info) => {
+                    let text = format!("{} ({})", display_name(info), info.pid);
+                    return Some(Effect::Copy(text));
+                }
+                None => self.note("nothing to yank"),
+            },
             _ => {}
         }
         None
@@ -419,12 +622,16 @@ impl App {
     }
 
     fn run_action(&mut self, idx: usize) -> Option<Effect> {
-        let row = self.selected_row();
-        let pid = row.info.pid;
-        let is_current = row.is_current;
-        let name_pid = format!("{} ({})", display_name(&row.info), pid);
-        let command = row.info.command.clone();
-        let exe = row.info.exe.clone();
+        let Some(info) = self.selected_info().cloned() else {
+            self.note("nothing to act on");
+            return None;
+        };
+        let pid = info.pid;
+        let is_current =
+            self.view == View::Tree && self.rows.get(self.selected).is_some_and(|r| r.is_current);
+        let name_pid = format!("{} ({})", display_name(&info), pid);
+        let command = info.command.clone();
+        let exe = info.exe.clone();
         match idx {
             0 => {
                 self.show_actions = false;
@@ -820,5 +1027,105 @@ mod tests {
         app.selected = 0;
         app.ensure_visible(3);
         assert_eq!(app.scroll, 0);
+    }
+
+    fn holders_app() -> App {
+        let mut vim = proc(123, 1, "vim");
+        vim.command = Some("/usr/bin/vim /var/log/app.log".to_string());
+        App::new_holders(
+            PathBuf::from("/var/log/app.log"),
+            vec![vim, proc(456, 1, "code")],
+        )
+    }
+
+    #[test]
+    fn holders_view_navigates_within_bounds() {
+        let mut app = holders_app();
+        assert_eq!(app.view, View::Holders);
+        assert_eq!(app.position(), (1, 2));
+        app.handle_key(key(KeyCode::Char('j')));
+        app.handle_key(key(KeyCode::Char('j')));
+        app.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(app.position(), (2, 2));
+        app.handle_key(key(KeyCode::Char('g')));
+        app.handle_key(key(KeyCode::Char('g')));
+        assert_eq!(app.position(), (1, 2));
+        app.handle_key(key(KeyCode::Char('G')));
+        assert_eq!(app.position(), (2, 2));
+    }
+
+    #[test]
+    fn holders_enter_returns_focus_effect() {
+        let mut app = holders_app();
+        let effect = app.handle_key(key(KeyCode::Enter));
+        assert_eq!(effect, Some(Effect::Focus(123)));
+        app.handle_key(key(KeyCode::Char('j')));
+        let effect = app.handle_key(key(KeyCode::Char('f')));
+        assert_eq!(effect, Some(Effect::Focus(456)));
+    }
+
+    #[test]
+    fn enter_tree_from_holders_and_esc_roundtrip() {
+        let mut app = holders_app();
+        app.enter_tree_from_holders(&sample_tree());
+        assert_eq!(app.view, View::Tree);
+        assert_eq!(app.breadcrumb().as_deref(), Some("/var/log/app.log > ph"));
+        let effect = app.handle_key(key(KeyCode::Esc));
+        assert_eq!(effect, None);
+        assert_eq!(app.view, View::Holders);
+        assert_eq!(app.breadcrumb(), None);
+        assert_eq!(app.handle_key(key(KeyCode::Backspace)), None);
+        assert_eq!(app.view, View::Holders);
+    }
+
+    #[test]
+    fn holders_yank_and_detail_pane() {
+        let mut app = holders_app();
+        let effect = app.handle_key(key(KeyCode::Char('y')));
+        assert_eq!(effect, Some(Effect::Copy("vim (123)".to_string())));
+        let effect = app.handle_key(key(KeyCode::Char('Y')));
+        assert_eq!(
+            effect,
+            Some(Effect::Copy("/usr/bin/vim /var/log/app.log".to_string()))
+        );
+
+        app.handle_key(key(KeyCode::Tab));
+        let effect = app.handle_key(key(KeyCode::Char('y')));
+        assert_eq!(effect, Some(Effect::Copy("123".to_string())));
+        app.handle_key(key(KeyCode::Esc));
+        assert_eq!(app.focus, Focus::Tree);
+        assert_eq!(app.view, View::Holders);
+    }
+
+    #[test]
+    fn holders_action_menu_focuses_holder() {
+        let mut app = holders_app();
+        app.handle_key(key(KeyCode::Char('a')));
+        let effect = app.handle_key(key(KeyCode::Char('f')));
+        assert_eq!(effect, Some(Effect::Focus(123)));
+        assert!(!app.show_actions);
+    }
+
+    #[test]
+    fn replace_holders_preserves_selection_by_pid() {
+        let mut app = holders_app();
+        app.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(app.selected_info().map(|p| p.pid), Some(456));
+        app.replace_holders(vec![proc(456, 1, "code")]);
+        assert_eq!(app.selected_info().map(|p| p.pid), Some(456));
+        assert_eq!(app.position(), (1, 1));
+    }
+
+    #[test]
+    fn replace_holders_with_empty_list_is_safe() {
+        let mut app = holders_app();
+        app.replace_holders(Vec::new());
+        assert_eq!(app.position(), (0, 0));
+        assert_eq!(app.selected_info(), None);
+        assert_eq!(app.handle_key(key(KeyCode::Char('j'))), None);
+        assert_eq!(app.handle_key(key(KeyCode::Enter)), None);
+        assert_eq!(app.handle_key(key(KeyCode::Char('y'))), None);
+        assert_eq!(app.status.as_deref(), Some("nothing to yank"));
+        assert!(!app.should_quit);
     }
 }

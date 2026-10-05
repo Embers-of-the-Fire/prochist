@@ -10,7 +10,8 @@ use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use prochist_core::{
-    MockProvider, Pid, ProcessProvider, ProcessTree, TreeError, build_tree, default_provider,
+    MockProvider, Pid, ProcessInfo, ProcessProvider, ProcessTree, TreeError, build_tree,
+    default_provider,
 };
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
@@ -19,7 +20,7 @@ mod app;
 mod clipboard;
 mod ui;
 
-use app::{App, Effect, Focus};
+use app::{App, Effect, Focus, View};
 
 #[derive(Parser)]
 #[command(
@@ -29,7 +30,12 @@ use app::{App, Effect, Focus};
 )]
 struct Cli {
     /// Process ID to inspect [default: current process]
+    #[arg(short = 'p', long, value_name = "PID", conflicts_with = "file")]
     pid: Option<u32>,
+
+    /// Explore the processes that have FILE or DIR open
+    #[arg(short = 'f', long, value_name = "PATH")]
+    file: Option<PathBuf>,
 
     /// Load a mocked process snapshot from a JSON file (testing only)
     #[arg(long, hide = true, value_name = "FILE")]
@@ -58,6 +64,22 @@ fn main() -> ExitCode {
         }
     };
 
+    if let Some(path) = &cli.file {
+        let pids = match provider.holders(path) {
+            Ok(pids) => pids,
+            Err(e) => {
+                eprintln!("phi: error: {}: {e}", path.display());
+                return ExitCode::FAILURE;
+            }
+        };
+        if pids.is_empty() {
+            eprintln!("phi: error: no process has {} open", path.display());
+            return ExitCode::FAILURE;
+        }
+        let app = App::new_holders(path.clone(), resolve_holders(&processes, &pids));
+        return finish(run(provider.as_ref(), app));
+    }
+
     let pid = cli.pid.unwrap_or_else(std::process::id);
     let tree = match build_tree(&processes, pid) {
         Ok(tree) => tree,
@@ -67,13 +89,27 @@ fn main() -> ExitCode {
         }
     };
 
-    match run(provider.as_ref(), tree) {
+    finish(run(provider.as_ref(), App::new(&tree)))
+}
+
+fn finish(result: io::Result<()>) -> ExitCode {
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("phi: error: {e}");
             ExitCode::FAILURE
         }
     }
+}
+
+fn resolve_holders(processes: &[ProcessInfo], pids: &[Pid]) -> Vec<ProcessInfo> {
+    let mut holders: Vec<ProcessInfo> = pids
+        .iter()
+        .filter_map(|pid| processes.iter().find(|p| p.pid == *pid))
+        .cloned()
+        .collect();
+    holders.sort_by_key(|p| p.pid);
+    holders
 }
 
 struct TerminalGuard;
@@ -103,12 +139,11 @@ fn install_panic_hook() {
     }));
 }
 
-fn run(provider: &dyn ProcessProvider, tree: ProcessTree) -> io::Result<()> {
+fn run(provider: &dyn ProcessProvider, mut app: App) -> io::Result<()> {
     let _guard = TerminalGuard::enter()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
     terminal.clear()?;
 
-    let mut app = App::new(&tree);
     while !app.should_quit {
         terminal.draw(|f| ui::draw(f, &mut app))?;
         if !event::poll(Duration::from_millis(250))? {
@@ -123,7 +158,10 @@ fn run(provider: &dyn ProcessProvider, tree: ProcessTree) -> io::Result<()> {
                 && !app.show_actions
                 && app.focus == Focus::Tree
             {
-                refresh(provider, &mut app);
+                match app.view {
+                    View::Tree => refresh(provider, &mut app),
+                    View::Holders => refresh_holders(provider, &mut app),
+                }
                 continue;
             }
             match app.handle_key(key) {
@@ -150,14 +188,42 @@ fn rebuild(provider: &dyn ProcessProvider, pid: Pid) -> Result<ProcessTree, Stri
 fn focus_on(provider: &dyn ProcessProvider, pid: Pid, push: bool, app: &mut App) {
     match rebuild(provider, pid) {
         Ok(tree) => {
-            if push {
-                app.apply_focus(&tree);
-            } else {
+            if !push {
                 app.apply_restore(&tree);
+            } else if app.view == View::Holders {
+                app.enter_tree_from_holders(&tree);
+            } else {
+                app.apply_focus(&tree);
             }
             app.note(format!("focused: {pid}"));
         }
         Err(message) => app.note(message),
+    }
+}
+
+fn refresh_holders(provider: &dyn ProcessProvider, app: &mut App) {
+    let Some(path) = app.holders.as_ref().map(|h| h.path.clone()) else {
+        return;
+    };
+    let pids = match provider.holders(&path) {
+        Ok(pids) => pids,
+        Err(e) => {
+            app.note(format!("{}: {e}", path.display()));
+            return;
+        }
+    };
+    match provider.snapshot() {
+        Ok(processes) => {
+            let holders = resolve_holders(&processes, &pids);
+            let empty = holders.is_empty();
+            app.replace_holders(holders);
+            if empty {
+                app.note(format!("no process has {} open", path.display()));
+            } else {
+                app.note("refreshed");
+            }
+        }
+        Err(e) => app.note(format!("cannot enumerate processes: {e}")),
     }
 }
 
