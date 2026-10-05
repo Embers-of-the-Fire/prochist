@@ -11,6 +11,18 @@ Windows is the shipping target for `ph`. The backend (`WindowsProvider` in
 `exe` is populated best-effort via `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)`
 + `QueryFullProcessImageNameW`; `command` stays `None` (not exposed by Toolhelp).
 
+File-holder queries (`ph -f FILE`) use the Restart Manager API
+(`RmStartSession` → `RmRegisterResources` → `RmGetList` → `RmEndSession` from
+`rstrtmgr.dll`) rather than a full system handle scan: it is documented,
+stable, and sufficient for "which processes have this file open". Trade-offs:
+
+- **Files only**: Restart Manager registers file paths, not directories, so
+  `ph -f DIR` fails with an error on Windows. The Linux backend supports
+  directories via `/proc/*/fd` prefix matching.
+- **No handle-scan hangs**: enumerating all system handles
+  (`NtQuerySystemInformation`, handle.exe-style) can block on named pipes and
+  needs elevation; Restart Manager avoids that entirely.
+
 Development and CI verification happen on the Linux backend, which shares the
 same `ProcessProvider` trait; CI additionally runs the full suite (including a
 live-snapshot smoke test) on `windows-latest`.

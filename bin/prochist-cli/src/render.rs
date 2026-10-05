@@ -75,6 +75,25 @@ fn omitted(out: &mut String, g: &Glyphs, indent: usize, count: usize, is_last: b
     let _ = writeln!(out, "{base}{connector}... {count} {noun} omitted");
 }
 
+pub fn render_holders(path: &Path, holders: &[ProcessInfo], opts: &RenderOptions) -> String {
+    let g = if opts.ascii { &ASCII } else { &UNICODE };
+    let mut out = String::new();
+    let _ = writeln!(out, "{}", path.display());
+
+    let shown = match opts.max_children {
+        Some(max) => holders.len().min(max),
+        None => holders.len(),
+    };
+    let hidden = holders.len() - shown;
+    for (i, holder) in holders[..shown].iter().enumerate() {
+        node(&mut out, g, 0, holder, hidden == 0 && i == shown - 1, opts);
+    }
+    if hidden > 0 {
+        omitted(&mut out, g, 0, hidden, true);
+    }
+    out
+}
+
 pub fn render(tree: &ProcessTree, opts: &RenderOptions) -> String {
     let g = if opts.ascii { &ASCII } else { &UNICODE };
     let mut out = String::new();
@@ -118,6 +137,7 @@ mod tests {
             name: name.to_string(),
             command: None,
             exe: None,
+            open_files: Vec::new(),
         }
     }
 
@@ -226,6 +246,57 @@ mod tests {
         let expected =
             "├── init (1)\n├── bash (200)\n└── ph (300)\n    └── ... 2 processes omitted\n";
         assert_eq!(render(&sample(), &opts), expected);
+    }
+
+    fn holders_sample() -> Vec<ProcessInfo> {
+        let mut vim = proc(123, 1, "vim");
+        vim.exe = Some("/usr/bin/vim".to_string());
+        vim.command = Some("/usr/bin/vim /var/log/app.log".to_string());
+        let mut code = proc(456, 1, "code");
+        code.exe = Some("/usr/share/code/code".to_string());
+        code.command = Some("/usr/share/code/code /var/log".to_string());
+        vec![vim, code]
+    }
+
+    #[test]
+    fn holders_default_lists_processes_under_path() {
+        let expected = "/var/log/app.log\n├── vim (123)\n└── code (456)\n";
+        assert_eq!(
+            render_holders(
+                Path::new("/var/log/app.log"),
+                &holders_sample(),
+                &RenderOptions::default()
+            ),
+            expected
+        );
+    }
+
+    #[test]
+    fn holders_with_long_ascii_and_executable() {
+        let opts = RenderOptions {
+            ascii: true,
+            long: true,
+            executable: true,
+            ..Default::default()
+        };
+        let expected = "/var/log/app.log\n|-- /usr/bin/vim (123)\n|   /usr/bin/vim /var/log/app.log\n+-- /usr/share/code/code (456)\n    /usr/share/code/code /var/log\n";
+        assert_eq!(
+            render_holders(Path::new("/var/log/app.log"), &holders_sample(), &opts),
+            expected
+        );
+    }
+
+    #[test]
+    fn holders_max_children_omits_rest() {
+        let opts = RenderOptions {
+            max_children: Some(1),
+            ..Default::default()
+        };
+        let expected = "/var/log/app.log\n├── vim (123)\n└── ... 1 process omitted\n";
+        assert_eq!(
+            render_holders(Path::new("/var/log/app.log"), &holders_sample(), &opts),
+            expected
+        );
     }
 
     #[test]

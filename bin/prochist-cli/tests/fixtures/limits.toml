@@ -1,5 +1,5 @@
 bin.name = "ph"
-args = "--snapshot tests/fixtures/limits.snapshot.json -M 2 -C 2 300"
+args = "--snapshot tests/fixtures/limits.snapshot.json -M 2 -C 2 -p 300"
 stdout = """
 ├── ... 2 processes omitted
 ├── login (100)

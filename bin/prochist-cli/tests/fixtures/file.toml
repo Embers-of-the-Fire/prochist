@@ -1,0 +1,7 @@
+bin.name = "ph"
+args = "--snapshot tests/fixtures/file.snapshot.json -f /var/log/app.log"
+stdout = """
+/var/log/app.log
+├── vim (123)
+└── code (456)
+"""

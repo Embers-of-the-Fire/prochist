@@ -1,0 +1,6 @@
+bin.name = "ph"
+args = "--snapshot tests/fixtures/file.snapshot.json -f /nope/missing"
+status.code = 1
+stderr = """
+ph: error: no process has /nope/missing open
+"""

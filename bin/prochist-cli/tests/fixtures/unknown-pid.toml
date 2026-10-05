@@ -1,5 +1,5 @@
 bin.name = "ph"
-args = "--snapshot tests/fixtures/basic.snapshot.json 999"
+args = "--snapshot tests/fixtures/basic.snapshot.json -p 999"
 status.code = 1
 stderr = """
 ph: error: no such process: 999

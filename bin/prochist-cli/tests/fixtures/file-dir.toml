@@ -1,0 +1,7 @@
+bin.name = "ph"
+args = "--snapshot tests/fixtures/file.snapshot.json -f /srv/data"
+stdout = """
+/srv/data
+├── code (456)
+└── agent (789)
+"""

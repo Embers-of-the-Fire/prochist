@@ -1,5 +1,5 @@
 bin.name = "ph"
-args = "--snapshot tests/fixtures/rich.snapshot.json -A -L 300"
+args = "--snapshot tests/fixtures/rich.snapshot.json -A -L -p 300"
 stdout = """
 |-- init (1)
 |   /sbin/init splash

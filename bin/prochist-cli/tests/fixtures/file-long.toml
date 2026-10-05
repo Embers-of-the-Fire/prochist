@@ -1,0 +1,8 @@
+bin.name = "ph"
+args = "--snapshot tests/fixtures/file.snapshot.json -A -L -C 1 -f /var/log/app.log"
+stdout = """
+/var/log/app.log
+|-- vim (123)
+|   /usr/bin/vim /var/log/app.log
++-- ... 1 process omitted
+"""

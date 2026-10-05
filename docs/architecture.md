@@ -11,16 +11,22 @@ docs/                  # design notes
 
 ## prochist-core
 
-- `model` — `ProcessInfo { pid, ppid, name }`, `ProcessTree { ancestors, current, children }`.
-- `provider` — the `ProcessProvider` trait (`fn snapshot() -> io::Result<Vec<ProcessInfo>>`).
-  All platform backends and test mocks implement this single trait.
+- `model` — `ProcessInfo { pid, ppid, name, command?, exe?, open_files }`,
+  `ProcessTree { ancestors, current, children }`.
+- `provider` — the `ProcessProvider` trait. `snapshot() -> io::Result<Vec<ProcessInfo>>`
+  is required; `holders(path) -> io::Result<Vec<Pid>>` (processes that have a
+  file/directory open) has a default `Unsupported` error impl that backends
+  override. All platform backends and test mocks implement this single trait.
 - `tree` — `build_tree(snapshot, pid)`: walks the `ppid` chain upward with a cycle
   guard (protects against PID reuse / pathological snapshots) and collects direct
   children sorted by PID.
 - `linux` — development/verification backend, parses `/proc/<pid>/stat`.
+  `holders` scans `/proc/*/fd/*` symlinks (device+inode comparison for files,
+  canonical prefix match for directories).
 - `windows` — the shipping target; Toolhelp snapshot
   (`CreateToolhelp32Snapshot` + `Process32FirstW`/`Process32NextW`), with
-  best-effort `exe` paths via `QueryFullProcessImageNameW`. See `windows-notes.md`.
+  best-effort `exe` paths via `QueryFullProcessImageNameW`. `holders` uses the
+  Restart Manager API (files only). See `windows-notes.md`.
 - `mock` — `MockProvider`, loads a snapshot from JSON for tests.
 
 ## prochist-cli
