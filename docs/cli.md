@@ -47,7 +47,7 @@ accepts file paths only); `ph -f DIR` exits 1 with an error.
 | `-E`, `--executable` | Show the full executable path instead of the binary name. |
 | `-M`, `--max-ancestors <N>` | Show at most `N` ancestors (the ones nearest to the target), replacing the omitted oldest with a `... x processes omitted` line. |
 | `-C`, `--max-children <N>` | Show at most `N` children (or file holders, in `-f` mode), ending the list with a `... x processes omitted` line. |
-| `-s`, `--search <QUERY>` | Not supported in the CLI: prints an error and exits `1`. Process search lives in the TUI (`phi`); to search from the shell use `ps -aux \| grep <pattern>`. |
+| `-s`, `--search <QUERY>` | Not supported in the CLI: prints an error and exits `1`. Process search lives in the TUI (`phi`); to search from the shell use `ps aux \| grep <pattern>`. |
 
 ```
 $ ph -L -p 300

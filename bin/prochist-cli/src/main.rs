@@ -55,7 +55,7 @@ fn main() -> ExitCode {
 
     if cli.search.is_some() {
         eprintln!(
-            "ph: error: --search is only available in the TUI (phi); use 'ps -aux | grep <pattern>' to search from the CLI"
+            "ph: error: --search is only available in the TUI (phi); use 'ps aux | grep <pattern>' to search from the CLI"
         );
         return ExitCode::FAILURE;
     }
