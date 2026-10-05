@@ -18,8 +18,9 @@ docs/                  # design notes
   guard (protects against PID reuse / pathological snapshots) and collects direct
   children sorted by PID.
 - `linux` — development/verification backend, parses `/proc/<pid>/stat`.
-- `windows` — the shipping target; stubbed (`todo!()`) until the Toolhelp backend
-  lands. See `windows-notes.md`.
+- `windows` — the shipping target; Toolhelp snapshot
+  (`CreateToolhelp32Snapshot` + `Process32FirstW`/`Process32NextW`), with
+  best-effort `exe` paths via `QueryFullProcessImageNameW`. See `windows-notes.md`.
 - `mock` — `MockProvider`, loads a snapshot from JSON for tests.
 
 ## prochist-cli

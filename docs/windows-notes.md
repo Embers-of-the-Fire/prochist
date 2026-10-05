@@ -1,17 +1,19 @@
 # Windows backend notes
 
-Windows is the shipping target for `ph`. The backend is currently stubbed
-(`WindowsProvider::snapshot` is `todo!()`); development and verification happen
-on the Linux backend, which shares the same `ProcessProvider` trait.
-
-## Planned implementation
-
-Use a Toolhelp snapshot:
+Windows is the shipping target for `ph`. The backend (`WindowsProvider` in
+`crates/prochist-core/src/windows.rs`) uses a Toolhelp snapshot:
 
 1. `CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)`
 2. Iterate with `Process32FirstW` / `Process32NextW`
 3. Map `PROCESSENTRY32W { th32ProcessID, th32ParentProcessID, szExeFile }`
    into `ProcessInfo { pid, ppid, name }`
+
+`exe` is populated best-effort via `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)`
++ `QueryFullProcessImageNameW`; `command` stays `None` (not exposed by Toolhelp).
+
+Development and CI verification happen on the Linux backend, which shares the
+same `ProcessProvider` trait; CI additionally runs the full suite (including a
+live-snapshot smoke test) on `windows-latest`.
 
 ## Caveats
 

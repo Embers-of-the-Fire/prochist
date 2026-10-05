@@ -19,7 +19,7 @@ render it differently.
   is the only error (`TreeError::NotFound`).
 - `linux` — development/verification backend, parses `/proc/<pid>/stat`.
   Reference implementation for new backends.
-- `windows` — the shipping target, currently stubbed (`todo!()`). Plan and
+- `windows` — the shipping target; Toolhelp snapshot backend (`windows-sys`).
   PID-reuse caveats: [`docs/windows-notes.md`](../../docs/windows-notes.md).
 - `mock` — `MockProvider`, loads a snapshot from JSON for tests.
 

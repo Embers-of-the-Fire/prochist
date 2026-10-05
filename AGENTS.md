@@ -25,8 +25,13 @@ Rust workspace. `ph` — prints the process tree around a PID. Windows is the sh
 ## Platform notes
 
 - `crates/prochist-core/src/lib.rs` has `compile_error!` for non-Linux/non-Windows targets.
-- `windows.rs` is stubbed with `todo!()`; Linux backend (parses `/proc/<pid>/stat`) is the reference. Windows plan and PID-reuse caveats: `docs/windows-notes.md`.
+- `windows.rs` is the shipping-target backend (Toolhelp snapshot); Linux backend (parses `/proc/<pid>/stat`) is the dev/verification reference. Windows PID-reuse caveats: `docs/windows-notes.md`. CI runs fmt/clippy/test on both `ubuntu-latest` and `windows-latest`.
 - `build_tree` already guards against ancestor cycles and missing parents — do not add redundant checks in providers.
+
+## Releasing
+
+- `release-plz.yml` releases per-package tags/GitHub releases + crates.io on push to `main`. It uses the `RELEASE_PLZ_TOKEN` secret (PAT), not the default `GITHUB_TOKEN` — the default token cannot trigger other workflows, which `cd.yml` depends on.
+- `cd.yml` runs on `release: [published]`: builds `ph`/`phi` for `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu` from the tagged commit and attaches archives to the matching package release (`ph` → `prochist-cli-v*`, `phi` → `prochist-tui-v*`).
 
 ## Conventions
 
