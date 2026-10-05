@@ -48,6 +48,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Static CRT on MSVC
         if: env.PACKAGE_MATCH == 'true' && endsWith(matrix.target, 'windows-msvc')
+        shell: bash
         run: echo "RUSTFLAGS=-C target-feature=+crt-static" >> "${GITHUB_ENV}"
       - name: Build and upload binary
         if: env.PACKAGE_MATCH == 'true'
