@@ -24,4 +24,4 @@ The `ph` binary. Owns ALL user-facing output (`render.rs`); `prochist-core` must
 - Default PID = `std::process::id()` (ph inspects itself); fixture `default-self.toml` covers this.
 - Name shown = basename of `exe` when available, else `name` from the provider; `-E/--executable` shows the full `exe` path. Binary name is never truncated.
 - Omitted entries print `... N process(es) omitted` (singular/plural handled in `render.rs`); `-M` omits the OLDEST ancestors, `-C` keeps the FIRST children by PID.
-- New flag = new clap field → `RenderOptions` field → render unit test → `.toml` fixture → `docs/cli.md` flags table. All five, or the change is incomplete.
+- New renderable flag = new clap field → `RenderOptions` field → render unit test → `.toml` fixture → `docs/cli.md` flags table. All five, or the change is incomplete. CLI-only flags rejected before provider work (like `--search`) are exempt from the `RenderOptions` field and render test; they still need a clap field, a rejection fixture, and a `docs/cli.md` entry.
