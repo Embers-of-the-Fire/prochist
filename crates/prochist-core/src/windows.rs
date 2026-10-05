@@ -4,7 +4,9 @@
 
 use std::io;
 
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Foundation::{
+    CloseHandle, ERROR_NO_MORE_FILES, GetLastError, HANDLE, INVALID_HANDLE_VALUE,
+};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
@@ -29,8 +31,11 @@ impl ProcessProvider for WindowsProvider {
         entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
 
         let mut processes = Vec::new();
-        let mut more = unsafe { Process32FirstW(snapshot.0, &mut entry) };
-        while more != 0 {
+        let first = unsafe { Process32FirstW(snapshot.0, &mut entry) };
+        if first == 0 {
+            return check_enum_end(processes);
+        }
+        loop {
             processes.push(ProcessInfo {
                 pid: entry.th32ProcessID,
                 ppid: entry.th32ParentProcessID,
@@ -38,9 +43,19 @@ impl ProcessProvider for WindowsProvider {
                 command: None,
                 exe: query_exe_path(entry.th32ProcessID),
             });
-            more = unsafe { Process32NextW(snapshot.0, &mut entry) };
+            if unsafe { Process32NextW(snapshot.0, &mut entry) } == 0 {
+                return check_enum_end(processes);
+            }
         }
+    }
+}
+
+fn check_enum_end(processes: Vec<ProcessInfo>) -> io::Result<Vec<ProcessInfo>> {
+    let err = unsafe { GetLastError() };
+    if err == ERROR_NO_MORE_FILES {
         Ok(processes)
+    } else {
+        Err(io::Error::from_raw_os_error(err as i32))
     }
 }
 
