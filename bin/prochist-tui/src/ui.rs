@@ -16,6 +16,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     match app.view {
         View::Tree => draw_tree(frame, app, chunks[0]),
         View::Holders => draw_holders(frame, app, chunks[0]),
+        View::Processes => draw_processes(frame, app, chunks[0]),
     }
     draw_details(frame, app, chunks[1]);
     draw_status(frame, app, chunks[2]);
@@ -91,6 +92,49 @@ fn draw_holders(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(list, area);
 }
 
+fn draw_processes(frame: &mut Frame, app: &mut App, area: Rect) {
+    let height = area.height.saturating_sub(2);
+    app.view_height = height;
+    app.ensure_visible(height);
+
+    let focused = app.focus == Focus::Tree && !app.show_help && !app.show_actions;
+    let visible = app.visible_processes();
+    let selected = app
+        .processes
+        .as_ref()
+        .map(|s| (s.selected, s.scroll, s.filter.clone()));
+    let Some((selected, scroll, filter)) = selected else {
+        return;
+    };
+    let lines: Vec<Line> = visible
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let mut text = format!("{:>7} {}", p.pid, display_name(p));
+            if let Some(command) = &p.command {
+                text.push_str(" — ");
+                text.push_str(command);
+            }
+            let style = if i == selected && focused {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            };
+            Line::styled(text, style)
+        })
+        .collect();
+
+    let title = if filter.is_empty() {
+        " Processes ".to_string()
+    } else {
+        format!(" Processes (filter: {filter}) ")
+    };
+    let list = Paragraph::new(lines)
+        .block(Block::bordered().title(title))
+        .scroll((scroll, 0));
+    frame.render_widget(list, area);
+}
+
 fn draw_details(frame: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focus == Focus::Detail && !app.show_help && !app.show_actions;
     let values = app
@@ -130,9 +174,12 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
         "HELP"
     } else if app.show_actions {
         "ACTIONS"
+    } else if app.search.is_some() {
+        "SEARCH"
     } else {
         match (app.view, app.focus) {
             (View::Holders, Focus::Tree) => "HOLDERS",
+            (View::Processes, Focus::Tree) => "PROCESSES",
             (_, Focus::Tree) => "TREE",
             (_, Focus::Detail) => "DETAIL",
         }
@@ -146,10 +193,11 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     );
     let (index, total) = app.position();
     let position = format!(" {index}/{total}");
-    let message = app
-        .status
-        .clone()
-        .unwrap_or_else(|| " ?: help  q: quit".to_string());
+    let message = match (&app.status, &app.search) {
+        (Some(message), _) => message.clone(),
+        (None, Some(search)) => format!("/{}", search.query),
+        (None, None) => " ?: help  q: quit".to_string(),
+    };
     let separator = || Span::styled(" │ ", Style::default().fg(Color::DarkGray));
     let mut spans = vec![
         mode_tag,
@@ -383,6 +431,39 @@ mod tests {
         let text = buffer_text(&terminal);
         assert!(text.contains("/var/log/app.log > ph"));
         assert!(text.contains("TREE"));
+    }
+
+    fn processes_app() -> App {
+        let mut vim = proc(123, 1, "vim");
+        vim.command = Some("/usr/bin/vim /var/log/app.log".to_string());
+        App::new_processes(vec![vim, proc(456, 1, "code")])
+    }
+
+    #[test]
+    fn renders_processes_view() {
+        let mut terminal = Terminal::new(TestBackend::new(60, 14)).unwrap();
+        let mut app = processes_app();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        let text = buffer_text(&terminal);
+        assert!(text.contains("123 vim"));
+        assert!(text.contains("/usr/bin/vim /var/log/app.log"));
+        assert!(text.contains("PROCESSES"));
+        assert!(text.contains("1/2"));
+    }
+
+    #[test]
+    fn renders_search_prompt_and_filter_title() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut terminal = Terminal::new(TestBackend::new(60, 14)).unwrap();
+        let mut app = processes_app();
+        app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE));
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        let text = buffer_text(&terminal);
+        assert!(text.contains("SEARCH"));
+        assert!(text.contains("/v"));
+        assert!(text.contains("filter: v"));
+        assert!(text.contains("1/1"));
     }
 
     #[test]

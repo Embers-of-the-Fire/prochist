@@ -5,13 +5,15 @@
 details pane for the selected process at the bottom.
 
 ```
-phi [-p PID]
+phi
+phi -p PID
 phi -f FILE|DIR
 ```
 
-PID defaults to the current process. The hidden `--snapshot <FILE>` flag works
-like in `ph` (MockProvider, testing only) and is handy for driving the TUI
-against a fixed tree.
+With no arguments, `phi` opens the processes view: a flat, searchable list of
+all running processes. With `-p PID` it opens the tree around that PID. The
+hidden `--snapshot <FILE>` flag works like in `ph` (MockProvider, testing only)
+and is handy for driving the TUI against a fixed tree.
 
 `phi -f PATH` starts in the holders view: the processes that have the file (or
 a file under the directory) open, listed under the queried path. If no process
@@ -24,9 +26,30 @@ holds the path, `phi` exits 1 like `ph`. As with `ph`, `-f DIR` is Linux-only
   bold), and its children — same shape as `ph` output, one row per process.
 - **Details** (bottom, fixed 7 rows): PID, PPID, Name, Command, Executable of
   the selected row.
-- **Status bar** (bottom line): mode tag (`TREE`/`HOLDERS`/`DETAIL`/`ACTIONS`/`HELP`),
-  cursor position, focus breadcrumb when re-rooted (e.g. `ph > worker`), and
-  transient messages (yank confirmations, refresh errors).
+- **Status bar** (bottom line): mode tag
+  (`TREE`/`HOLDERS`/`PROCESSES`/`DETAIL`/`ACTIONS`/`SEARCH`/`HELP`), cursor
+  position, focus breadcrumb when re-rooted (e.g. `ph > worker`), the search
+  prompt while searching, and transient messages (yank confirmations, refresh
+  errors).
+
+## Processes view
+
+Started with plain `phi`. The top pane lists every process one per row as
+`pid name — command`, sorted by PID. `/` opens a live filter: each keystroke
+narrows the list, `Enter` keeps the filter, `Esc` cancels the edit (restoring
+the previous filter); `Esc` outside the search prompt clears the active
+filter. `Enter` (or `f`) on a process re-roots into its tree, and `Esc` /
+`Backspace` from there returns to the (cached, still-filtered) list. `r`
+re-snapshots the process table, preserving the filter and the selected PID.
+
+## Search
+
+`/` searches in every view. In the processes view it live-filters the full
+process list; in the tree and holders views it jumps to the first match on
+`Enter`, and `n` / `N` cycle through the remaining matches. Matching is a
+case-insensitive substring over the process name and command line; a field
+prefix narrows it: `pid:300` (PID prefix), `name:vim`, `cmd:--daemon`,
+`exe:/usr/bin`.
 
 ## Holders view
 
@@ -82,6 +105,11 @@ status bar and leaves the view unchanged.
 | `Y` | details | yank `name (pid)` |
 | `r` | tree | refresh the process snapshot (around the focused PID) |
 | `r` | holders | re-query which processes hold the path |
+| `r` | processes | re-snapshot the process table |
+| `/` | processes | live-filter all processes |
+| `/` | tree / holders | jump-to-match search (`Enter` applies, `Esc` cancels) |
+| `n` / `N` | tree / holders | next / previous search match |
+| `Esc` | processes | clear the active filter |
 | `?` | anywhere | toggle the help screen (scrollable with `j`/`k`) |
 | `q` | tree | quit |
 

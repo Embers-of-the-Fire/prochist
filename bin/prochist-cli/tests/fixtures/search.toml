@@ -1,0 +1,6 @@
+bin.name = "ph"
+args = "--search worker"
+status.code = 1
+stderr = """
+ph: error: --search is only available in the TUI (phi); use 'ps -aux | grep <pattern>' to search from the CLI
+"""

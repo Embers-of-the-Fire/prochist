@@ -13,12 +13,14 @@ pub enum Focus {
 pub enum View {
     Tree,
     Holders,
+    Processes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum FocusEntry {
     Process(Pid, String),
     Holders,
+    Processes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,6 +57,55 @@ pub fn fields(info: &ProcessInfo) -> Vec<Option<String>> {
         info.command.clone(),
         info.exe.clone(),
     ]
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SearchField {
+    Any,
+    Pid,
+    Name,
+    Cmd,
+    Exe,
+}
+
+fn parse_query(query: &str) -> (SearchField, &str) {
+    let prefixes = [
+        ("pid:", SearchField::Pid),
+        ("name:", SearchField::Name),
+        ("cmd:", SearchField::Cmd),
+        ("exe:", SearchField::Exe),
+    ];
+    for (prefix, field) in prefixes {
+        if let Some(rest) = query.strip_prefix(prefix) {
+            return (field, rest.trim());
+        }
+    }
+    (SearchField::Any, query)
+}
+
+fn field_matches(info: &ProcessInfo, field: SearchField, query: &str) -> bool {
+    if query.is_empty() {
+        return true;
+    }
+    let contains = |text: &str| text.to_lowercase().contains(&query.to_lowercase());
+    match field {
+        SearchField::Any => contains(&info.name) || info.command.as_deref().is_some_and(contains),
+        SearchField::Pid => info.pid.to_string().starts_with(query),
+        SearchField::Name => contains(&info.name),
+        SearchField::Cmd => info.command.as_deref().is_some_and(contains),
+        SearchField::Exe => info.exe.as_deref().is_some_and(contains),
+    }
+}
+
+fn filtered<'a>(all: &'a [ProcessInfo], filter: &str) -> impl Iterator<Item = &'a ProcessInfo> {
+    let (field, query) = parse_query(filter);
+    all.iter()
+        .filter(move |info| field_matches(info, field, query))
+}
+
+pub struct SearchState {
+    pub query: String,
+    saved_filter: String,
 }
 
 fn build_rows(tree: &ProcessTree) -> Vec<Row> {
@@ -115,7 +166,7 @@ pub const ACTION_ITEMS: [ActionItem; 5] = [
     },
 ];
 
-pub const HELP_LINES: [&str; 50] = [
+pub const HELP_LINES: [&str; 63] = [
     "phi - interactive process tree",
     "",
     "Navigation",
@@ -132,6 +183,19 @@ pub const HELP_LINES: [&str; 50] = [
     "  Enter / f       focus the selected process (re-root)",
     "  Esc / Backspace return to the previous focus",
     "  a               action menu for the selected row",
+    "",
+    "Processes view (phi with no arguments)",
+    "  /               live-filter all processes",
+    "  Enter / f       focus the selected process",
+    "  Esc             clear the active filter",
+    "",
+    "Search",
+    "  /               search (filter in processes view,",
+    "                  jump-to-match in tree/holders)",
+    "  n / N           next / previous match (tree/holders)",
+    "  Enter           apply the query, Esc cancel",
+    "  field prefixes  pid: name: cmd: exe:",
+    "  (no prefix)     match name + command",
     "",
     "Holders view (phi -f PATH)",
     "  Enter / f       focus the selected holder's process",
@@ -175,6 +239,13 @@ pub struct HoldersState {
     pub scroll: u16,
 }
 
+pub struct ProcessesState {
+    pub all: Vec<ProcessInfo>,
+    pub filter: String,
+    pub selected: usize,
+    pub scroll: u16,
+}
+
 pub struct App {
     pub rows: Vec<Row>,
     pub selected: usize,
@@ -182,6 +253,8 @@ pub struct App {
     pub focus: Focus,
     pub view: View,
     pub holders: Option<HoldersState>,
+    pub processes: Option<ProcessesState>,
+    pub search: Option<SearchState>,
     pub detail_selected: usize,
     pub show_help: bool,
     pub help_scroll: u16,
@@ -192,6 +265,8 @@ pub struct App {
     pub should_quit: bool,
     focus_stack: Vec<FocusEntry>,
     pending_g: bool,
+    matches: Vec<usize>,
+    match_idx: usize,
 }
 
 impl App {
@@ -204,6 +279,8 @@ impl App {
             focus: Focus::Tree,
             view: View::Tree,
             holders: None,
+            processes: None,
+            search: None,
             detail_selected: 0,
             show_help: false,
             help_scroll: 0,
@@ -214,6 +291,8 @@ impl App {
             should_quit: false,
             focus_stack: Vec::new(),
             pending_g: false,
+            matches: Vec::new(),
+            match_idx: 0,
         }
     }
 
@@ -242,6 +321,59 @@ impl App {
         app
     }
 
+    pub fn new_processes(mut processes: Vec<ProcessInfo>) -> Self {
+        processes.sort_by_key(|p| p.pid);
+        let mut app = Self::new(&ProcessTree {
+            ancestors: Vec::new(),
+            current: ProcessInfo {
+                pid: 0,
+                ppid: 0,
+                name: String::new(),
+                command: None,
+                exe: None,
+                open_files: Vec::new(),
+            },
+            children: Vec::new(),
+        });
+        app.rows = Vec::new();
+        app.selected = 0;
+        app.view = View::Processes;
+        app.processes = Some(ProcessesState {
+            all: processes,
+            filter: String::new(),
+            selected: 0,
+            scroll: 0,
+        });
+        app
+    }
+
+    pub fn visible_processes(&self) -> Vec<&ProcessInfo> {
+        match &self.processes {
+            Some(state) => filtered(&state.all, &state.filter).collect(),
+            None => Vec::new(),
+        }
+    }
+
+    pub fn replace_processes(&mut self, mut all: Vec<ProcessInfo>) {
+        let selected_pid = self.selected_info().map(|p| p.pid);
+        let Some(state) = &mut self.processes else {
+            return;
+        };
+        all.sort_by_key(|p| p.pid);
+        state.all = all;
+        state.selected = selected_pid
+            .and_then(|pid| filtered(&state.all, &state.filter).position(|p| p.pid == pid))
+            .unwrap_or(0);
+        state.scroll = 0;
+        self.detail_selected = 0;
+    }
+
+    pub fn enter_tree_from_processes(&mut self, tree: &ProcessTree) {
+        self.focus_stack.push(FocusEntry::Processes);
+        self.view = View::Tree;
+        self.set_rows(tree);
+    }
+
     pub fn replace_tree(&mut self, tree: &ProcessTree) {
         let pid = self.rows[self.selected].info.pid;
         self.rows = build_rows(tree);
@@ -252,6 +384,7 @@ impl App {
             .unwrap_or(tree.ancestors.len())
             .min(self.rows.len() - 1);
         self.detail_selected = 0;
+        self.matches.clear();
     }
 
     pub fn apply_focus(&mut self, tree: &ProcessTree) {
@@ -281,6 +414,7 @@ impl App {
         state.holders = holders;
         state.scroll = 0;
         self.detail_selected = 0;
+        self.matches.clear();
     }
 
     pub fn apply_restore(&mut self, tree: &ProcessTree) {
@@ -292,6 +426,7 @@ impl App {
         self.selected = tree.ancestors.len();
         self.scroll = 0;
         self.detail_selected = 0;
+        self.matches.clear();
     }
 
     pub fn focused_pid(&self) -> Pid {
@@ -312,6 +447,7 @@ impl App {
                     .as_ref()
                     .map(|h| h.path.display().to_string())
                     .unwrap_or_default(),
+                FocusEntry::Processes => "processes".to_string(),
             })
             .collect();
         parts.push(display_name(&self.current_row().info));
@@ -329,6 +465,10 @@ impl App {
                 let state = self.holders.as_ref()?;
                 state.holders.get(state.selected)
             }
+            View::Processes => {
+                let state = self.processes.as_ref()?;
+                filtered(&state.all, &state.filter).nth(state.selected)
+            }
         }
     }
 
@@ -340,6 +480,17 @@ impl App {
                     (state.selected + 1, state.holders.len())
                 }
                 _ => (0, 0),
+            },
+            View::Processes => match &self.processes {
+                Some(state) => {
+                    let total = filtered(&state.all, &state.filter).count();
+                    if total == 0 {
+                        (0, 0)
+                    } else {
+                        (state.selected + 1, total)
+                    }
+                }
+                None => (0, 0),
             },
         }
     }
@@ -372,6 +523,18 @@ impl App {
                 let last = state.holders.len() as i64 - 1;
                 state.selected = (state.selected as i64 + delta).clamp(0, last) as usize;
             }
+            View::Processes => {
+                let Some(state) = &mut self.processes else {
+                    return;
+                };
+                let count = filtered(&state.all, &state.filter).count();
+                if count == 0 {
+                    state.selected = 0;
+                    return;
+                }
+                let last = count as i64 - 1;
+                state.selected = (state.selected as i64 + delta).clamp(0, last) as usize;
+            }
         }
     }
 
@@ -380,6 +543,11 @@ impl App {
             View::Tree => self.selected = 0,
             View::Holders => {
                 if let Some(state) = &mut self.holders {
+                    state.selected = 0;
+                }
+            }
+            View::Processes => {
+                if let Some(state) = &mut self.processes {
                     state.selected = 0;
                 }
             }
@@ -392,6 +560,12 @@ impl App {
             View::Holders => {
                 if let Some(state) = &mut self.holders {
                     state.selected = state.holders.len().saturating_sub(1);
+                }
+            }
+            View::Processes => {
+                if let Some(state) = &mut self.processes {
+                    let count = filtered(&state.all, &state.filter).count();
+                    state.selected = count.saturating_sub(1);
                 }
             }
         }
@@ -410,6 +584,10 @@ impl App {
         let (selected, scroll) = match self.view {
             View::Tree => (self.selected as u16, &mut self.scroll),
             View::Holders => match &mut self.holders {
+                Some(state) => (state.selected as u16, &mut state.scroll),
+                None => return,
+            },
+            View::Processes => match &mut self.processes {
                 Some(state) => (state.selected as u16, &mut state.scroll),
                 None => return,
             },
@@ -433,11 +611,150 @@ impl App {
         if self.show_actions {
             return self.handle_actions_key(key);
         }
+        if self.search.is_some() {
+            self.handle_search_key(key);
+            return None;
+        }
         match (self.view, self.focus) {
             (View::Tree, Focus::Tree) => self.handle_tree_key(key),
             (View::Holders, Focus::Tree) => self.handle_holders_key(key),
+            (View::Processes, Focus::Tree) => self.handle_processes_key(key),
             (_, Focus::Detail) => self.handle_detail_key(key),
         }
+    }
+
+    fn open_search(&mut self) {
+        let filter = match &self.processes {
+            Some(state) if self.view == View::Processes => state.filter.clone(),
+            _ => String::new(),
+        };
+        self.search = Some(SearchState {
+            query: filter.clone(),
+            saved_filter: filter,
+        });
+    }
+
+    fn handle_search_key(&mut self, key: KeyEvent) {
+        let filter_mode = self.view == View::Processes;
+        match key.code {
+            KeyCode::Esc => {
+                if filter_mode
+                    && let (Some(search), Some(state)) = (&self.search, &mut self.processes)
+                {
+                    state.filter = search.saved_filter.clone();
+                    Self::clamp_processes_selection(state);
+                }
+                self.search = None;
+                self.matches.clear();
+            }
+            KeyCode::Enter => {
+                let Some(search) = self.search.take() else {
+                    return;
+                };
+                if filter_mode {
+                    self.note(format!("filter: {}", search.query));
+                } else {
+                    self.matches = self.find_matches(&search.query);
+                    self.match_idx = 0;
+                    if self.matches.is_empty() {
+                        self.note("no matches");
+                    } else {
+                        let idx = self.matches[0];
+                        self.set_selected_index(idx);
+                        self.note(format!("match 1/{}", self.matches.len()));
+                    }
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(search) = &mut self.search {
+                    search.query.pop();
+                }
+                if filter_mode {
+                    self.sync_filter_from_search();
+                }
+            }
+            KeyCode::Char(c) => {
+                if let Some(search) = &mut self.search {
+                    search.query.push(c);
+                }
+                if filter_mode {
+                    self.sync_filter_from_search();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn sync_filter_from_search(&mut self) {
+        if let (Some(search), Some(state)) = (&self.search, &mut self.processes) {
+            state.filter = search.query.clone();
+            Self::clamp_processes_selection(state);
+        }
+    }
+
+    fn clamp_processes_selection(state: &mut ProcessesState) {
+        let count = filtered(&state.all, &state.filter).count();
+        state.selected = state.selected.min(count.saturating_sub(1));
+    }
+
+    fn find_matches(&self, query: &str) -> Vec<usize> {
+        if query.is_empty() {
+            return Vec::new();
+        }
+        let (field, query) = parse_query(query);
+        match self.view {
+            View::Tree => self
+                .rows
+                .iter()
+                .enumerate()
+                .filter(|(_, row)| field_matches(&row.info, field, query))
+                .map(|(i, _)| i)
+                .collect(),
+            View::Holders => match &self.holders {
+                Some(state) => state
+                    .holders
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, info)| field_matches(info, field, query))
+                    .map(|(i, _)| i)
+                    .collect(),
+                None => Vec::new(),
+            },
+            View::Processes => Vec::new(),
+        }
+    }
+
+    fn set_selected_index(&mut self, idx: usize) {
+        match self.view {
+            View::Tree => self.selected = idx.min(self.rows.len().saturating_sub(1)),
+            View::Holders => {
+                if let Some(state) = &mut self.holders {
+                    state.selected = idx.min(state.holders.len().saturating_sub(1));
+                }
+            }
+            View::Processes => {
+                if let Some(state) = &mut self.processes {
+                    state.selected = idx;
+                    Self::clamp_processes_selection(state);
+                }
+            }
+        }
+    }
+
+    fn cycle_match(&mut self, delta: i64) {
+        if self.matches.is_empty() {
+            self.note("no active search");
+            return;
+        }
+        let len = self.matches.len() as i64;
+        self.match_idx = (self.match_idx as i64 + delta).rem_euclid(len) as usize;
+        let idx = self.matches[self.match_idx];
+        self.set_selected_index(idx);
+        self.note(format!(
+            "match {}/{}",
+            self.match_idx + 1,
+            self.matches.len()
+        ));
     }
 
     fn handle_help_key(&mut self, key: KeyEvent) {
@@ -466,8 +783,15 @@ impl App {
                     self.view = View::Holders;
                     self.detail_selected = 0;
                 }
+                Some(FocusEntry::Processes) => {
+                    self.view = View::Processes;
+                    self.detail_selected = 0;
+                }
                 None => {}
             },
+            KeyCode::Char('/') => self.open_search(),
+            KeyCode::Char('n') => self.cycle_match(1),
+            KeyCode::Char('N') => self.cycle_match(-1),
             KeyCode::Char('a') => {
                 self.show_actions = true;
                 self.action_selected = 0;
@@ -526,6 +850,72 @@ impl App {
                 self.show_actions = true;
                 self.action_selected = 0;
             }
+            KeyCode::Char('/') => self.open_search(),
+            KeyCode::Char('n') => self.cycle_match(1),
+            KeyCode::Char('N') => self.cycle_match(-1),
+            KeyCode::Char('j') | KeyCode::Down => self.move_by(1),
+            KeyCode::Char('k') | KeyCode::Up => self.move_by(-1),
+            KeyCode::Char('d') if ctrl => self.move_by(self.half_page()),
+            KeyCode::Char('u') if ctrl => self.move_by(-self.half_page()),
+            KeyCode::Char('f') if ctrl => self.move_by(self.page()),
+            KeyCode::Char('b') if ctrl => self.move_by(-self.page()),
+            KeyCode::Enter | KeyCode::Char('f') => {
+                if let Some(info) = self.selected_info() {
+                    return Some(Effect::Focus(info.pid));
+                }
+            }
+            KeyCode::Char('g') => {
+                if self.pending_g {
+                    self.jump_to_start();
+                    self.pending_g = false;
+                } else {
+                    self.pending_g = true;
+                }
+            }
+            KeyCode::Char('G') | KeyCode::End => self.jump_to_end(),
+            KeyCode::Home => self.jump_to_start(),
+            KeyCode::Char('y') => match self.selected_info() {
+                Some(info) => {
+                    let text = format!("{} ({})", display_name(info), info.pid);
+                    return Some(Effect::Copy(text));
+                }
+                None => self.note("nothing to yank"),
+            },
+            KeyCode::Char('Y') => {
+                let value = self
+                    .selected_info()
+                    .and_then(|info| info.command.clone().or_else(|| info.exe.clone()));
+                match value {
+                    Some(value) => return Some(Effect::Copy(value)),
+                    None => self.note("nothing to yank"),
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+
+    fn handle_processes_key(&mut self, key: KeyEvent) -> Option<Effect> {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        match key.code {
+            KeyCode::Char('q') => self.should_quit = true,
+            KeyCode::Char('?') => self.show_help = true,
+            KeyCode::Tab | KeyCode::Char('i') => self.focus = Focus::Detail,
+            KeyCode::Esc => {
+                if let Some(state) = &mut self.processes
+                    && !state.filter.is_empty()
+                {
+                    state.filter.clear();
+                    state.selected = 0;
+                    state.scroll = 0;
+                    self.note("filter cleared");
+                }
+            }
+            KeyCode::Char('a') => {
+                self.show_actions = true;
+                self.action_selected = 0;
+            }
+            KeyCode::Char('/') => self.open_search(),
             KeyCode::Char('j') | KeyCode::Down => self.move_by(1),
             KeyCode::Char('k') | KeyCode::Up => self.move_by(-1),
             KeyCode::Char('d') if ctrl => self.move_by(self.half_page()),
@@ -1114,6 +1504,202 @@ mod tests {
         app.replace_holders(vec![proc(456, 1, "code")]);
         assert_eq!(app.selected_info().map(|p| p.pid), Some(456));
         assert_eq!(app.position(), (1, 1));
+    }
+
+    fn type_str(app: &mut App, text: &str) {
+        for c in text.chars() {
+            app.handle_key(key(KeyCode::Char(c)));
+        }
+    }
+
+    fn processes_app() -> App {
+        let mut ph = proc(300, 200, "ph");
+        ph.exe = Some("/usr/local/bin/ph".to_string());
+        ph.command = Some("/usr/local/bin/ph 300".to_string());
+        let mut worker = proc(301, 300, "worker");
+        worker.command = Some("/usr/bin/worker --daemon".to_string());
+        let mut bash = proc(200, 1, "bash");
+        bash.command = Some("/usr/bin/bash -l".to_string());
+        App::new_processes(vec![
+            ph,
+            worker,
+            bash,
+            proc(1, 0, "init"),
+            proc(302, 300, "logger"),
+        ])
+    }
+
+    #[test]
+    fn parse_query_extracts_field_prefix() {
+        assert_eq!(parse_query("pid:300"), (SearchField::Pid, "300"));
+        assert_eq!(parse_query("name:foo"), (SearchField::Name, "foo"));
+        assert_eq!(parse_query("cmd:bar"), (SearchField::Cmd, "bar"));
+        assert_eq!(parse_query("exe:baz"), (SearchField::Exe, "baz"));
+        assert_eq!(parse_query("plain"), (SearchField::Any, "plain"));
+    }
+
+    #[test]
+    fn field_matches_are_case_insensitive_substrings() {
+        let mut p = proc(300, 200, "ph");
+        p.command = Some("/usr/bin/Ph 300".to_string());
+        p.exe = Some("/usr/local/bin/ph".to_string());
+        assert!(field_matches(&p, SearchField::Any, "PH"));
+        assert!(field_matches(&p, SearchField::Name, "ph"));
+        assert!(field_matches(&p, SearchField::Cmd, "300"));
+        assert!(field_matches(&p, SearchField::Exe, "local"));
+        assert!(field_matches(&p, SearchField::Pid, "30"));
+        assert!(!field_matches(&p, SearchField::Pid, "031"));
+        assert!(!field_matches(&p, SearchField::Name, "zzz"));
+    }
+
+    #[test]
+    fn processes_view_navigates_and_filters_live() {
+        let mut app = processes_app();
+        assert_eq!(app.view, View::Processes);
+        assert_eq!(app.position(), (1, 5));
+        app.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(app.selected_info().map(|p| p.pid), Some(200));
+
+        app.handle_key(key(KeyCode::Char('/')));
+        type_str(&mut app, "work");
+        assert_eq!(app.position(), (1, 1));
+        assert_eq!(app.selected_info().map(|p| p.pid), Some(301));
+        app.handle_key(key(KeyCode::Enter));
+        assert!(app.search.is_none());
+        assert_eq!(app.position(), (1, 1));
+    }
+
+    #[test]
+    fn processes_filter_supports_field_prefixes() {
+        let mut app = processes_app();
+        app.handle_key(key(KeyCode::Char('/')));
+        type_str(&mut app, "pid:30");
+        assert_eq!(app.position(), (1, 3));
+        app.handle_key(key(KeyCode::Enter));
+
+        app.handle_key(key(KeyCode::Esc));
+        app.handle_key(key(KeyCode::Char('/')));
+        type_str(&mut app, "name:log");
+        assert_eq!(app.position(), (1, 1));
+        assert_eq!(app.selected_info().map(|p| p.pid), Some(302));
+        app.handle_key(key(KeyCode::Enter));
+
+        app.handle_key(key(KeyCode::Esc));
+        app.handle_key(key(KeyCode::Char('/')));
+        type_str(&mut app, "exe:local");
+        assert_eq!(app.position(), (1, 1));
+        assert_eq!(app.selected_info().map(|p| p.pid), Some(300));
+    }
+
+    #[test]
+    fn esc_in_filter_search_restores_previous_filter() {
+        let mut app = processes_app();
+        app.handle_key(key(KeyCode::Char('/')));
+        type_str(&mut app, "work");
+        app.handle_key(key(KeyCode::Enter));
+        assert_eq!(app.position(), (1, 1));
+
+        app.handle_key(key(KeyCode::Char('/')));
+        type_str(&mut app, "erzzz");
+        assert_eq!(app.position(), (0, 0));
+        app.handle_key(key(KeyCode::Esc));
+        assert_eq!(app.position(), (1, 1));
+        assert_eq!(app.selected_info().map(|p| p.pid), Some(301));
+    }
+
+    #[test]
+    fn esc_in_processes_view_clears_filter() {
+        let mut app = processes_app();
+        app.handle_key(key(KeyCode::Char('/')));
+        type_str(&mut app, "work");
+        app.handle_key(key(KeyCode::Enter));
+        app.handle_key(key(KeyCode::Esc));
+        assert_eq!(app.position(), (1, 5));
+        assert_eq!(app.status.as_deref(), Some("filter cleared"));
+    }
+
+    #[test]
+    fn enter_in_processes_view_returns_focus_effect() {
+        let mut app = processes_app();
+        let effect = app.handle_key(key(KeyCode::Enter));
+        assert_eq!(effect, Some(Effect::Focus(1)));
+    }
+
+    #[test]
+    fn enter_tree_from_processes_and_esc_roundtrip() {
+        let mut app = processes_app();
+        app.enter_tree_from_processes(&sample_tree());
+        assert_eq!(app.view, View::Tree);
+        assert_eq!(app.breadcrumb().as_deref(), Some("processes > ph"));
+        let effect = app.handle_key(key(KeyCode::Esc));
+        assert_eq!(effect, None);
+        assert_eq!(app.view, View::Processes);
+        assert_eq!(app.breadcrumb(), None);
+    }
+
+    #[test]
+    fn replace_processes_preserves_selection_by_pid() {
+        let mut app = processes_app();
+        app.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(app.selected_info().map(|p| p.pid), Some(200));
+        let mut bash = proc(200, 1, "bash");
+        bash.command = Some("/usr/bin/bash -l".to_string());
+        app.replace_processes(vec![bash, proc(1, 0, "init")]);
+        assert_eq!(app.selected_info().map(|p| p.pid), Some(200));
+        assert_eq!(app.position(), (2, 2));
+    }
+
+    #[test]
+    fn tree_search_jumps_to_matches_and_cycles() {
+        let mut app = App::new(&sample_tree());
+        app.handle_key(key(KeyCode::Char('/')));
+        type_str(&mut app, "pid:30");
+        app.handle_key(key(KeyCode::Enter));
+        assert_eq!(app.selected, 2);
+        assert_eq!(app.status.as_deref(), Some("match 1/3"));
+        app.handle_key(key(KeyCode::Char('n')));
+        assert_eq!(app.selected, 3);
+        app.handle_key(key(KeyCode::Char('n')));
+        assert_eq!(app.selected, 4);
+        app.handle_key(key(KeyCode::Char('n')));
+        assert_eq!(app.selected, 2);
+        app.handle_key(key(KeyCode::Char('N')));
+        assert_eq!(app.selected, 4);
+    }
+
+    #[test]
+    fn tree_search_with_no_matches_keeps_selection() {
+        let mut app = App::new(&sample_tree());
+        app.handle_key(key(KeyCode::Char('/')));
+        type_str(&mut app, "zzz");
+        app.handle_key(key(KeyCode::Enter));
+        assert_eq!(app.selected, 2);
+        assert_eq!(app.status.as_deref(), Some("no matches"));
+        app.handle_key(key(KeyCode::Char('n')));
+        assert_eq!(app.status.as_deref(), Some("no active search"));
+    }
+
+    #[test]
+    fn esc_cancels_pending_jump_search() {
+        let mut app = App::new(&sample_tree());
+        app.handle_key(key(KeyCode::Char('/')));
+        type_str(&mut app, "worker");
+        app.handle_key(key(KeyCode::Esc));
+        assert_eq!(app.selected, 2);
+        assert!(app.search.is_none());
+        app.handle_key(key(KeyCode::Char('n')));
+        assert_eq!(app.selected, 2);
+    }
+
+    #[test]
+    fn search_input_captures_navigation_keys() {
+        let mut app = processes_app();
+        app.handle_key(key(KeyCode::Char('/')));
+        type_str(&mut app, "log");
+        assert_eq!(app.position(), (1, 1));
+        app.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(app.search.as_ref().map(|s| s.query.as_str()), Some("logj"));
+        assert_eq!(app.position(), (0, 0));
     }
 
     #[test]

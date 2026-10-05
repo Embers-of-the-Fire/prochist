@@ -17,7 +17,8 @@ The `ph` binary. Owns ALL user-facing output (`render.rs`); `prochist-core` must
 
 ## Conventions / invariants
 
-- Exit codes: `0` tree or holder list printed; `1` unknown PID, no holders for a `-f` path, unreadable snapshot, unsupported query, or provider failure. Errors go to stderr as `ph: error: ...`, never panic.
+- Exit codes: `0` tree or holder list printed; `1` unknown PID, no holders for a `-f` path, unreadable snapshot, unsupported query, `--search` (TUI-only by design — the error points users at `ps -aux | grep`), or provider failure. Errors go to stderr as `ph: error: ...`, never panic.
+- `--search <QUERY>` is rejected before any provider work (no `RenderOptions` field — it never reaches rendering).
 - Two modes: tree (`-p PID`, default = self) and file holders (`-f FILE|DIR`). They conflict; `-M` also conflicts with `-f`. `-C` caps children in tree mode and holders in `-f` mode. `-f DIR` is Linux-only (Windows backend returns `InvalidInput` — Restart Manager accepts files only).
 - `--snapshot <FILE>` is `hide = true` — testing only, never document it in `--help` output (it is documented in `docs/cli.md` for devs).
 - Default PID = `std::process::id()` (ph inspects itself); fixture `default-self.toml` covers this.
