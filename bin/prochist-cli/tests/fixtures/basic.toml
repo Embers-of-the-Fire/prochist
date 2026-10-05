@@ -1,5 +1,5 @@
 bin.name = "ph"
-args = "--snapshot tests/fixtures/basic.snapshot.json 300"
+args = "--snapshot tests/fixtures/basic.snapshot.json -p 300"
 stdout = """
 ├── init (1)
 ├── login (100)

@@ -11,6 +11,8 @@ pub struct ProcessInfo {
     pub command: Option<String>,
     #[serde(default)]
     pub exe: Option<String>,
+    #[serde(default)]
+    pub open_files: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

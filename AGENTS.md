@@ -1,13 +1,13 @@
 # AGENTS.md
 
-Rust workspace. `ph` — prints the process tree around a PID. Windows is the shipping target; Linux is dev/verification only.
+Rust workspace. `ph` — prints the process tree around a PID (`-p`) or the processes holding a file/directory open (`-f`). Windows is the shipping target; Linux is dev/verification only.
 
 ## Commands
 
 - `cargo test` — full suite (unit + trycmd end-to-end)
 - `cargo test -p prochist-cli` — end-to-end only
 - Bless trycmd fixtures after intentional output changes: `TRYCMD=overwrite cargo test`
-- Run the binary: `cargo run --bin ph -- [flags] [PID]`
+- Run the binary: `cargo run --bin ph -- [flags] [-p PID]` or `cargo run --bin ph -- -f FILE|DIR`
 - Run the TUI: `cargo run --bin phi -- [PID]`
 
 ## Layout / boundaries

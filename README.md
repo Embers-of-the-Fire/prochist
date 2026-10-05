@@ -5,7 +5,7 @@
 Windows is the shipping target; Linux is the development/verification platform.
 
 ```
-$ ph 300
+$ ph -p 300
 ├── init (1)
 ├── login (100)
 ├── bash (200)
@@ -17,23 +17,37 @@ $ ph 300
 Ancestors are listed root-first, the target process closes the list with `└──`,
 and its direct children are nested below it.
 
+`ph -f FILE` answers the reverse question — which processes have a file (or a
+file under a directory) open:
+
+```
+$ ph -f /var/log/app.log
+/var/log/app.log
+├── vim (123)
+└── code (456)
+```
+
 ## Install / run
 
 ```sh
-cargo run --bin ph -- [flags] [PID]
+cargo run --bin ph -- [flags] [-p PID]
+cargo run --bin ph -- [flags] -f FILE|DIR
 ```
 
-`[PID]` defaults to the PID of the `ph` process itself.
+Without `-p`, `ph` inspects its own PID. `-f DIR` is Linux-only for now
+(the Windows backend uses Restart Manager, which accepts files only).
 
 ## Flags
 
 | Flag | Effect |
 | --- | --- |
+| `-p`, `--pid <PID>` | Process ID to inspect (default: the `ph` process itself). |
+| `-f`, `--file <PATH>` | List processes that have `PATH` (file or directory) open. |
 | `-A`, `--ascii` | Use ASCII connectors instead of Unicode box-drawing glyphs. |
 | `-L`, `--long` | Show the full command line under each process. |
 | `-E`, `--executable` | Show the full executable path instead of the binary name. |
 | `-M`, `--max-ancestors <N>` | Show at most `N` ancestors (nearest to the target). |
-| `-C`, `--max-children <N>` | Show at most `N` children (first by PID). |
+| `-C`, `--max-children <N>` | Show at most `N` children or file holders (first by PID). |
 
 Full CLI reference: [docs/cli.md](docs/cli.md).
 
@@ -63,8 +77,9 @@ field-wise yanking (`y`/`Y`, via OSC 52), and a help screen (`?`). Full keymap:
 
 ## Exit codes
 
-- `0` — tree printed.
-- `1` — unknown PID or unreadable process snapshot.
+- `0` — tree or holder list printed.
+- `1` — unknown PID, no holders for a `-f` path, unsupported query, or
+  unreadable process snapshot.
 
 ## Development
 

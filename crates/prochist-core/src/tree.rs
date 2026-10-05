@@ -60,6 +60,7 @@ mod tests {
             name: name.to_string(),
             command: None,
             exe: None,
+            open_files: Vec::new(),
         }
     }
 

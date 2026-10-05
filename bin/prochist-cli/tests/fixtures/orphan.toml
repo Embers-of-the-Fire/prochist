@@ -1,5 +1,5 @@
 bin.name = "ph"
-args = "--snapshot tests/fixtures/orphan.snapshot.json 500"
+args = "--snapshot tests/fixtures/orphan.snapshot.json -p 500"
 stdout = """
 └── daemon (500)
     └── task (501)

@@ -1,0 +1,31 @@
+[
+  {
+    "pid": 1,
+    "ppid": 0,
+    "name": "init",
+    "command": "/sbin/init splash",
+    "exe": "/sbin/init"
+  },
+  {
+    "pid": 123,
+    "ppid": 1,
+    "name": "vim",
+    "command": "/usr/bin/vim /var/log/app.log",
+    "exe": "/usr/bin/vim",
+    "open_files": ["/var/log/app.log"]
+  },
+  {
+    "pid": 456,
+    "ppid": 1,
+    "name": "code",
+    "command": "/usr/share/code/code /var/log",
+    "exe": "/usr/share/code/code",
+    "open_files": ["/var/log/app.log", "/srv/data/x.db"]
+  },
+  {
+    "pid": 789,
+    "ppid": 1,
+    "name": "agent",
+    "open_files": ["/srv/data/y.db"]
+  }
+]

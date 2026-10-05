@@ -1,5 +1,5 @@
 bin.name = "ph"
-args = "--snapshot tests/fixtures/cycle.snapshot.json 10"
+args = "--snapshot tests/fixtures/cycle.snapshot.json -p 10"
 stdout = """
 ├── node-b (11)
 └── node-a (10)

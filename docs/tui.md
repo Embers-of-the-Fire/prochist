@@ -12,6 +12,9 @@ PID defaults to the current process. The hidden `--snapshot <FILE>` flag works
 like in `ph` (MockProvider, testing only) and is handy for driving the TUI
 against a fixed tree.
 
+`phi` has no equivalent of `ph -f` (file-holder listing) yet; that mode is
+CLI-only for now.
+
 ## Layout
 
 - **Processes** (top, fills): the ancestor chain, the target process (cyan,

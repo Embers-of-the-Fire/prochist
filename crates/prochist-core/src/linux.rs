@@ -1,13 +1,41 @@
 use std::fs;
 use std::io;
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
-use crate::model::ProcessInfo;
+use crate::model::{Pid, ProcessInfo};
 use crate::provider::ProcessProvider;
 
 pub struct LinuxProvider;
 
 impl ProcessProvider for LinuxProvider {
+    fn holders(&self, path: &Path) -> io::Result<Vec<Pid>> {
+        let canonical = fs::canonicalize(path)?;
+        let target_meta = fs::metadata(&canonical)?;
+        let mut pids = Vec::new();
+        for entry in fs::read_dir("/proc")? {
+            let entry = entry?;
+            let file_name = entry.file_name();
+            let Some(name) = file_name.to_str() else {
+                continue;
+            };
+            let Ok(pid) = name.parse::<Pid>() else {
+                continue;
+            };
+            let Ok(fds) = fs::read_dir(entry.path().join("fd")) else {
+                continue;
+            };
+            let holds = fds
+                .flatten()
+                .any(|fd| fd_matches(&fd.path(), &canonical, &target_meta));
+            if holds {
+                pids.push(pid);
+            }
+        }
+        pids.sort_unstable();
+        Ok(pids)
+    }
+
     fn snapshot(&self) -> io::Result<Vec<ProcessInfo>> {
         let mut processes = Vec::new();
         for entry in fs::read_dir("/proc")? {
@@ -29,6 +57,23 @@ impl ProcessProvider for LinuxProvider {
             }
         }
         Ok(processes)
+    }
+}
+
+fn fd_matches(fd_path: &Path, canonical: &Path, target_meta: &fs::Metadata) -> bool {
+    if target_meta.is_dir() {
+        let Ok(target) = fs::read_link(fd_path) else {
+            return false;
+        };
+        match fs::canonicalize(target) {
+            Ok(t) => t.starts_with(canonical),
+            Err(_) => false,
+        }
+    } else {
+        match fs::metadata(fd_path) {
+            Ok(m) => m.dev() == target_meta.dev() && m.ino() == target_meta.ino(),
+            Err(_) => false,
+        }
     }
 }
 
@@ -73,6 +118,7 @@ fn parse_stat(pid: u32, path: &Path) -> io::Result<ProcessInfo> {
         name,
         command: None,
         exe: None,
+        open_files: Vec::new(),
     })
 }
 
@@ -104,5 +150,43 @@ mod tests {
         assert_eq!(info.name, "my weird proc");
         assert_eq!(info.ppid, 100);
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn holders_finds_process_with_open_file() {
+        if !Path::new("/proc").exists() {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("prochist-test-file-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("held.txt");
+        fs::write(&file, b"held").unwrap();
+        let _open = fs::File::open(&file).unwrap();
+        let pids = LinuxProvider.holders(&file).unwrap();
+        assert!(pids.contains(&std::process::id()));
+        drop(_open);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn holders_matches_files_under_directory() {
+        if !Path::new("/proc").exists() {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("prochist-test-dir-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("held.txt");
+        fs::write(&file, b"held").unwrap();
+        let _open = fs::File::open(&file).unwrap();
+        let pids = LinuxProvider.holders(&dir).unwrap();
+        assert!(pids.contains(&std::process::id()));
+        drop(_open);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn holders_errors_on_missing_path() {
+        let missing = Path::new("/proc/definitely-not-a-real-path-xyz");
+        assert!(LinuxProvider.holders(missing).is_err());
     }
 }

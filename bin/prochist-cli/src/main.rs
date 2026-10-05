@@ -1,8 +1,10 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::Parser;
-use prochist_core::{MockProvider, ProcessProvider, TreeError, build_tree, default_provider};
+use prochist_core::{
+    MockProvider, ProcessInfo, ProcessProvider, TreeError, build_tree, default_provider,
+};
 
 mod render;
 
@@ -12,7 +14,12 @@ use render::RenderOptions;
 #[command(name = "ph", version, about = "Print the process tree around a PID")]
 struct Cli {
     /// Process ID to inspect [default: current process]
+    #[arg(short = 'p', long, value_name = "PID", conflicts_with = "file")]
     pid: Option<u32>,
+
+    /// List processes that have FILE or DIR open
+    #[arg(short = 'f', long, value_name = "PATH")]
+    file: Option<PathBuf>,
 
     /// Show the tree with ASCII connectors instead of Unicode
     #[arg(short = 'A', long)]
@@ -27,10 +34,10 @@ struct Cli {
     executable: bool,
 
     /// Show at most N ancestors, omitting the oldest
-    #[arg(short = 'M', long, value_name = "N")]
+    #[arg(short = 'M', long, value_name = "N", conflicts_with = "file")]
     max_ancestors: Option<usize>,
 
-    /// Show at most N children, omitting the rest
+    /// Show at most N children (or file holders), omitting the rest
     #[arg(short = 'C', long, value_name = "N")]
     max_children: Option<usize>,
 
@@ -61,7 +68,6 @@ fn main() -> ExitCode {
         }
     };
 
-    let pid = cli.pid.unwrap_or_else(std::process::id);
     let opts = RenderOptions {
         ascii: cli.ascii,
         long: cli.long,
@@ -69,6 +75,12 @@ fn main() -> ExitCode {
         max_ancestors: cli.max_ancestors,
         max_children: cli.max_children,
     };
+
+    if let Some(path) = &cli.file {
+        return file_mode(provider.as_ref(), &processes, path, &opts);
+    }
+
+    let pid = cli.pid.unwrap_or_else(std::process::id);
     match build_tree(&processes, pid) {
         Ok(tree) => {
             print!("{}", render::render(&tree, &opts));
@@ -79,4 +91,31 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn file_mode(
+    provider: &dyn ProcessProvider,
+    processes: &[ProcessInfo],
+    path: &Path,
+    opts: &RenderOptions,
+) -> ExitCode {
+    let pids = match provider.holders(path) {
+        Ok(pids) => pids,
+        Err(e) => {
+            eprintln!("ph: error: {}: {e}", path.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    if pids.is_empty() {
+        eprintln!("ph: error: no process has {} open", path.display());
+        return ExitCode::FAILURE;
+    }
+    let mut holders: Vec<ProcessInfo> = pids
+        .iter()
+        .filter_map(|pid| processes.iter().find(|p| p.pid == *pid))
+        .cloned()
+        .collect();
+    holders.sort_by_key(|p| p.pid);
+    print!("{}", render::render_holders(path, &holders, opts));
+    ExitCode::SUCCESS
 }
