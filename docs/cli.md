@@ -63,6 +63,22 @@ service keeps its plain name — walk the ancestor chain upward to find the
 nearest tagged service. Tagging is best-effort: if the SCM query fails, the
 tree still prints, just without tags.
 
+On Linux, processes running directly inside a systemd `.service` unit
+(detected from `/proc/<pid>/cgroup`, cgroup v2 or the v1 `name=systemd`
+hierarchy) are annotated with a `[[SystemdService]]` tag naming the unit,
+with the same tag-replaces-name / path-then-tag behavior as on Windows:
+
+```
+$ ph -p 800
+├── systemd (1)
+├── [[SystemdService]] sshd.service (600)
+└── sshd-session (800)
+```
+
+Processes in scopes (user sessions, containers) are not tagged. If the
+cgroup file is unreadable or the system is not systemd-managed, no tags are
+shown.
+
 ## Flags
 
 | Flag | Effect |

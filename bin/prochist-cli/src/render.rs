@@ -380,4 +380,38 @@ mod tests {
         let expected = "├── C:/Windows/System32/services.exe (500)\n├── C:/Services/FooSvc.exe [[WinService]] FooSvc (600)\n└── svchost.exe [[WinService]] DcomLaunch (+1) (700)\n    └── C:/Services/helper.exe (800)\n";
         assert_eq!(render(&service_tree(), &opts), expected);
     }
+
+    fn systemd_tree() -> ProcessTree {
+        let mut init = proc(1, 0, "systemd");
+        init.exe = Some("/usr/lib/systemd/systemd".to_string());
+        let mut sshd = proc(600, 1, "sshd");
+        sshd.exe = Some("/usr/sbin/sshd".to_string());
+        sshd.role = Some(ProcessRole::SystemdService {
+            unit: "sshd.service".to_string(),
+        });
+        let mut session = proc(800, 600, "sshd-session");
+        session.exe = Some("/usr/libexec/sshd-session".to_string());
+        ProcessTree {
+            ancestors: vec![init, sshd],
+            current: session,
+            children: vec![],
+        }
+    }
+
+    #[test]
+    fn systemd_service_replaces_name_with_tag() {
+        let expected =
+            "├── systemd (1)\n├── [[SystemdService]] sshd.service (600)\n└── sshd-session (800)\n";
+        assert_eq!(render(&systemd_tree(), &RenderOptions::default()), expected);
+    }
+
+    #[test]
+    fn systemd_service_tag_follows_binary_in_executable_mode() {
+        let opts = RenderOptions {
+            executable: true,
+            ..Default::default()
+        };
+        let expected = "├── /usr/lib/systemd/systemd (1)\n├── /usr/sbin/sshd [[SystemdService]] sshd.service (600)\n└── /usr/libexec/sshd-session (800)\n";
+        assert_eq!(render(&systemd_tree(), &opts), expected);
+    }
 }

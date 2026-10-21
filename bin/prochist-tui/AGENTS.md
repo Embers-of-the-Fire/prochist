@@ -60,7 +60,7 @@ testing flag) and the `phi: error: ...` / exit-code-1 error convention.
   — view-aware; never index `app.rows[app.selected]` directly in `ui.rs`.
 - Detail pane height is fixed at 8 (6 fields + borders); adding a field to
   `FIELD_LABELS` means bumping that constraint in `ui.rs`.
-- Processes with `role` set are rendered as a tag (`[[WinService]] name (+N)`)
-  instead of the binary name via `display_name`; the full service info lives in
-  the "Service" detail field, and the `service:` search prefix matches service
-  names/display names.
+- Processes with `role` set are rendered as a tag (`[[WinService]] name (+N)`
+  / `[[SystemdService]] unit`) instead of the binary name via `display_name`;
+  the full service info lives in the "Service" detail field, and the
+  `service:` search prefix matches service names/display names (or the unit).

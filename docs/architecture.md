@@ -24,8 +24,10 @@ docs/                  # design notes
   guard (protects against PID reuse / pathological snapshots) and collects direct
   children sorted by PID.
 - `linux` — development/verification backend, parses `/proc/<pid>/stat`.
-  `holders` scans `/proc/*/fd/*` symlinks (device+inode comparison for files,
-  canonical prefix match for directories).
+  `role` comes from `/proc/<pid>/cgroup`: a process whose cgroup leaf is a
+  `.service` unit is tagged `SystemdService { unit }` (best-effort, no tag on
+  non-systemd systems). `holders` scans `/proc/*/fd/*` symlinks (device+inode
+  comparison for files, canonical prefix match for directories).
 - `windows` — the shipping target; Toolhelp snapshot
   (`CreateToolhelp32Snapshot` + `Process32FirstW`/`Process32NextW`), with
   best-effort `exe` paths via `QueryFullProcessImageNameW` and best-effort

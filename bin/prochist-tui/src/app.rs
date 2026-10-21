@@ -1618,6 +1618,39 @@ mod tests {
         );
     }
 
+    fn systemd_service() -> ProcessInfo {
+        let mut svc = proc(600, 1, "sshd");
+        svc.exe = Some("/usr/sbin/sshd".to_string());
+        svc.role = Some(ProcessRole::SystemdService {
+            unit: "sshd.service".to_string(),
+        });
+        svc
+    }
+
+    #[test]
+    fn display_name_uses_systemd_tag_when_role_is_set() {
+        assert_eq!(
+            display_name(&systemd_service()),
+            "[[SystemdService]] sshd.service"
+        );
+    }
+
+    #[test]
+    fn fields_include_systemd_unit() {
+        assert_eq!(
+            fields(&systemd_service())[5].as_deref(),
+            Some("sshd.service")
+        );
+    }
+
+    #[test]
+    fn service_search_matches_systemd_unit() {
+        let svc = systemd_service();
+        assert!(field_matches(&svc, SearchField::Service, "sshd.service"));
+        assert!(field_matches(&svc, SearchField::Service, "sshd"));
+        assert!(!field_matches(&svc, SearchField::Service, "zzz"));
+    }
+
     #[test]
     fn service_search_matches_name_and_display_name() {
         let svc = windows_service();

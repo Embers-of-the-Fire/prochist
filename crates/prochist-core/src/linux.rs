@@ -3,7 +3,7 @@ use std::io;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
-use crate::model::{Pid, ProcessInfo};
+use crate::model::{Pid, ProcessInfo, ProcessRole};
 use crate::provider::ProcessProvider;
 
 pub struct LinuxProvider;
@@ -51,6 +51,7 @@ impl ProcessProvider for LinuxProvider {
                 Ok(mut info) => {
                     info.command = read_command(&entry.path());
                     info.exe = read_exe(&entry.path());
+                    info.role = service_role(&entry.path());
                     processes.push(info);
                 }
                 Err(_) => continue,
@@ -74,6 +75,30 @@ fn fd_matches(fd_path: &Path, canonical: &Path, target_meta: &fs::Metadata) -> b
             Ok(m) => m.dev() == target_meta.dev() && m.ino() == target_meta.ino(),
             Err(_) => false,
         }
+    }
+}
+
+fn service_role(proc_dir: &Path) -> Option<ProcessRole> {
+    let contents = fs::read_to_string(proc_dir.join("cgroup")).ok()?;
+    unit_from_cgroup(&contents).map(|unit| ProcessRole::SystemdService { unit })
+}
+
+fn unit_from_cgroup(contents: &str) -> Option<String> {
+    // cgroup v2 has a single unified line "0::/path"; on v1/hybrid setups the
+    // named systemd hierarchy carries the path instead.
+    let v2 = contents.lines().find_map(|l| l.strip_prefix("0::"));
+    let v1 = contents.lines().find_map(|l| {
+        let mut parts = l.splitn(3, ':');
+        match (parts.next(), parts.next(), parts.next()) {
+            (Some(_), Some("name=systemd"), Some(path)) => Some(path),
+            _ => None,
+        }
+    });
+    let leaf = v2.or(v1)?.rsplit('/').next()?;
+    if leaf.ends_with(".service") {
+        Some(leaf.to_string())
+    } else {
+        None
     }
 }
 
@@ -151,6 +176,36 @@ mod tests {
         assert_eq!(info.name, "my weird proc");
         assert_eq!(info.ppid, 100);
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn cgroup_v2_service_unit_is_tagged() {
+        let unit = unit_from_cgroup("0::/system.slice/sshd.service\n");
+        assert_eq!(unit.as_deref(), Some("sshd.service"));
+    }
+
+    #[test]
+    fn cgroup_v2_user_service_unit_is_tagged() {
+        let unit = unit_from_cgroup(
+            "0::/user.slice/user-1000.slice/user@1000.service/app.slice/foo.service\n",
+        );
+        assert_eq!(unit.as_deref(), Some("foo.service"));
+    }
+
+    #[test]
+    fn cgroup_v1_systemd_hierarchy_is_tagged() {
+        let unit = unit_from_cgroup("2:cpu,cpuacct:/\n1:name=systemd:/system.slice/cups.service\n");
+        assert_eq!(unit.as_deref(), Some("cups.service"));
+    }
+
+    #[test]
+    fn cgroup_scope_and_root_are_not_tagged() {
+        assert_eq!(
+            unit_from_cgroup("0::/user.slice/user-1000.slice/session-1.scope\n"),
+            None
+        );
+        assert_eq!(unit_from_cgroup("0::/\n"), None);
+        assert_eq!(unit_from_cgroup(""), None);
     }
 
     #[test]

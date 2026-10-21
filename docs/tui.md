@@ -27,11 +27,13 @@ holds the path, `phi` exits 1 like `ph`. As with `ph`, `-f DIR` is Linux-only
 - **Details** (bottom, fixed 8 rows): PID, PPID, Name, Command, Executable,
   Service of the selected row. The Service field lists the Windows service
   name(s) hosted by the process, with the display name in parentheses when
-  known (`FooSvc (Foo Service), BarSvc`); it is `-` for ordinary processes.
+  known (`FooSvc (Foo Service), BarSvc`), or the systemd unit for Linux
+  service processes (`sshd.service`); it is `-` for ordinary processes.
 
 Service host processes are rendered as `[[WinService]] <name>` in the tree,
 holders, and processes rows (mirroring `ph`); a PID hosting several services
-shows `(+N)` after the first name.
+shows `(+N)` after the first name. Linux service processes are rendered as
+`[[SystemdService]] <unit>`.
 - **Status bar** (bottom line): mode tag
   (`TREE`/`HOLDERS`/`PROCESSES`/`DETAIL`/`ACTIONS`/`SEARCH`/`HELP`), cursor
   position, focus breadcrumb when re-rooted (e.g. `ph > worker`), the search
