@@ -61,6 +61,7 @@ mod tests {
             command: None,
             exe: None,
             open_files: Vec::new(),
+            role: None,
         }
     }
 

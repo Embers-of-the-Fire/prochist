@@ -2,6 +2,7 @@
 //! Toolhelp snapshot: CreateToolhelp32Snapshot + Process32FirstW/Process32NextW.
 //! See docs/windows-notes.md for PID-reuse caveats.
 
+use std::collections::HashMap;
 use std::io;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
@@ -17,11 +18,15 @@ use windows_sys::Win32::System::RestartManager::{
     CCH_RM_SESSION_KEY, RM_PROCESS_INFO, RmEndSession, RmGetList, RmRegisterResources,
     RmStartSession,
 };
+use windows_sys::Win32::System::Services::{
+    CloseServiceHandle, ENUM_SERVICE_STATUS_PROCESSW, EnumServicesStatusExW, OpenSCManagerW,
+    SC_ENUM_PROCESS_INFO, SC_HANDLE, SC_MANAGER_ENUMERATE_SERVICE, SERVICE_ACTIVE, SERVICE_WIN32,
+};
 use windows_sys::Win32::System::Threading::{
     OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
 
-use crate::model::{Pid, ProcessInfo};
+use crate::model::{Pid, ProcessInfo, ProcessRole, ServiceEntry};
 use crate::provider::ProcessProvider;
 
 pub struct WindowsProvider;
@@ -116,6 +121,7 @@ impl ProcessProvider for WindowsProvider {
         entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
 
         let mut processes = Vec::new();
+        let roles = service_roles();
         let first = unsafe { Process32FirstW(snapshot.0, &mut entry) };
         if first == 0 {
             return check_enum_end(processes);
@@ -128,6 +134,11 @@ impl ProcessProvider for WindowsProvider {
                 command: None,
                 exe: query_exe_path(entry.th32ProcessID),
                 open_files: Vec::new(),
+                role: roles
+                    .get(&entry.th32ProcessID)
+                    .map(|services| ProcessRole::WindowsService {
+                        services: services.clone(),
+                    }),
             });
             if unsafe { Process32NextW(snapshot.0, &mut entry) } == 0 {
                 return check_enum_end(processes);
@@ -176,6 +187,104 @@ fn exe_name(entry: &PROCESSENTRY32W) -> String {
         .position(|c| *c == 0)
         .unwrap_or(entry.szExeFile.len());
     String::from_utf16_lossy(&entry.szExeFile[..len])
+}
+
+struct ScmHandle(SC_HANDLE);
+
+impl Drop for ScmHandle {
+    fn drop(&mut self) {
+        unsafe { CloseServiceHandle(self.0) };
+    }
+}
+
+fn service_roles() -> HashMap<Pid, Vec<ServiceEntry>> {
+    let mut map: HashMap<Pid, Vec<ServiceEntry>> = HashMap::new();
+    let raw = unsafe {
+        OpenSCManagerW(
+            std::ptr::null(),
+            std::ptr::null(),
+            SC_MANAGER_ENUMERATE_SERVICE,
+        )
+    };
+    if raw.is_null() {
+        return map;
+    }
+    let scm = ScmHandle(raw);
+
+    let mut needed: u32 = 0;
+    let mut count: u32 = 0;
+    let mut resume: u32 = 0;
+    unsafe {
+        EnumServicesStatusExW(
+            scm.0,
+            SC_ENUM_PROCESS_INFO,
+            SERVICE_WIN32,
+            SERVICE_ACTIVE,
+            std::ptr::null_mut(),
+            0,
+            &mut needed,
+            &mut count,
+            &mut resume,
+            std::ptr::null(),
+        );
+    }
+    if needed == 0 {
+        return map;
+    }
+
+    let mut buffer = vec![0u8; needed as usize];
+    resume = 0;
+    let ok = unsafe {
+        EnumServicesStatusExW(
+            scm.0,
+            SC_ENUM_PROCESS_INFO,
+            SERVICE_WIN32,
+            SERVICE_ACTIVE,
+            buffer.as_mut_ptr(),
+            buffer.len() as u32,
+            &mut needed,
+            &mut count,
+            &mut resume,
+            std::ptr::null(),
+        )
+    };
+    if ok == 0 {
+        return map;
+    }
+
+    let entries = unsafe {
+        std::slice::from_raw_parts(
+            buffer.as_ptr() as *const ENUM_SERVICE_STATUS_PROCESSW,
+            count as usize,
+        )
+    };
+    for entry in entries {
+        let pid = entry.ServiceStatusProcess.dwProcessId;
+        if pid == 0 {
+            continue;
+        }
+        map.entry(pid).or_default().push(ServiceEntry {
+            name: wide_string(entry.lpServiceName),
+            display_name: non_empty_wide_string(entry.lpDisplayName),
+        });
+    }
+    map
+}
+
+fn wide_string(ptr: windows_sys::core::PWSTR) -> String {
+    if ptr.is_null() {
+        return String::new();
+    }
+    let mut len = 0;
+    while unsafe { *ptr.add(len) } != 0 {
+        len += 1;
+    }
+    String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(ptr, len) })
+}
+
+fn non_empty_wide_string(ptr: windows_sys::core::PWSTR) -> Option<String> {
+    let s = wide_string(ptr);
+    if s.is_empty() { None } else { Some(s) }
 }
 
 fn query_exe_path(pid: u32) -> Option<String> {

@@ -11,8 +11,11 @@ docs/                  # design notes
 
 ## prochist-core
 
-- `model` — `ProcessInfo { pid, ppid, name, command?, exe?, open_files }`,
-  `ProcessTree { ancestors, current, children }`.
+- `model` — `ProcessInfo { pid, ppid, name, command?, exe?, open_files, role? }`,
+  `ProcessTree { ancestors, current, children }`. `role` is an optional
+  `ProcessRole` (`WindowsService { services }`, `SystemdService { unit }`)
+  marking processes launched by the platform's service manager; only the
+  service host PID itself is tagged, never its children.
 - `provider` — the `ProcessProvider` trait. `snapshot() -> io::Result<Vec<ProcessInfo>>`
   is required; `holders(path) -> io::Result<Vec<Pid>>` (processes that have a
   file/directory open) has a default `Unsupported` error impl that backends
@@ -25,8 +28,10 @@ docs/                  # design notes
   canonical prefix match for directories).
 - `windows` — the shipping target; Toolhelp snapshot
   (`CreateToolhelp32Snapshot` + `Process32FirstW`/`Process32NextW`), with
-  best-effort `exe` paths via `QueryFullProcessImageNameW`. `holders` uses the
-  Restart Manager API (files only). See `windows-notes.md`.
+  best-effort `exe` paths via `QueryFullProcessImageNameW` and best-effort
+  `role` tags via SCM enumeration (`EnumServicesStatusExW`, maps service name
+  → host PID; one `svchost.exe` PID can map to several services). `holders`
+  uses the Restart Manager API (files only). See `windows-notes.md`.
 - `mock` — `MockProvider`, loads a snapshot from JSON for tests.
 
 ## prochist-cli

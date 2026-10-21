@@ -9,7 +9,7 @@ use crate::app::{ACTION_ITEMS, App, FIELD_LABELS, Focus, HELP_LINES, View, displ
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let chunks = Layout::vertical([
         Constraint::Fill(1),
-        Constraint::Length(7),
+        Constraint::Length(8),
         Constraint::Length(1),
     ])
     .split(frame.area());
@@ -303,6 +303,7 @@ mod tests {
             command: None,
             exe: None,
             open_files: Vec::new(),
+            role: None,
         }
     }
 
@@ -331,7 +332,7 @@ mod tests {
 
     #[test]
     fn renders_tree_details_and_status() {
-        let mut terminal = Terminal::new(TestBackend::new(50, 14)).unwrap();
+        let mut terminal = Terminal::new(TestBackend::new(50, 15)).unwrap();
         let mut app = App::new(&sample_tree());
         terminal.draw(|f| draw(f, &mut app)).unwrap();
         let text = buffer_text(&terminal);

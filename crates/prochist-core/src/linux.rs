@@ -119,6 +119,7 @@ fn parse_stat(pid: u32, path: &Path) -> io::Result<ProcessInfo> {
         command: None,
         exe: None,
         open_files: Vec::new(),
+        role: None,
     })
 }
 

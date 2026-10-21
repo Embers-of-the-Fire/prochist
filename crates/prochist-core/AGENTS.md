@@ -9,11 +9,11 @@ Data model, `ProcessProvider` trait, and tree building. No user-facing output li
 
 ## Module map
 
-- `model.rs` — `ProcessInfo { pid, ppid, name, command?, exe?, open_files }` (serde; `command`/`exe`/`open_files` use `#[serde(default)]` so old snapshot JSON without them still parses; only `MockProvider` populates `open_files`), `ProcessTree { ancestors, current, children }`. `Pid = u32`.
+- `model.rs` — `ProcessInfo { pid, ppid, name, command?, exe?, open_files, role? }` (serde; `command`/`exe`/`open_files`/`role` use `#[serde(default)]` so old snapshot JSON without them still parses; only `MockProvider` populates `open_files`), `ProcessRole` (`WindowsService { services: Vec<ServiceEntry> }`, `SystemdService { unit }`; only the service host PID is tagged, never children), `ProcessTree { ancestors, current, children }`. `Pid = u32`.
 - `provider.rs` — trait with required `snapshot() -> io::Result<Vec<ProcessInfo>>` and `holders(path) -> io::Result<Vec<Pid>>` (file-holder query, default impl returns `Unsupported`; Linux/Windows/Mock override it).
 - `tree.rs` — `build_tree(snapshot, pid)`. See invariants below.
 - `linux.rs` — dev/verification backend, parses `/proc/<pid>/stat` + `cmdline` + `exe` symlink. `holders` scans `/proc/*/fd/*` (dev+inode match for files, canonical prefix match for dirs). Reference implementation for new backends.
-- `windows.rs` — shipping target, Toolhelp snapshot backend (`windows-sys`). `holders` uses Restart Manager (files only). PID-reuse caveats in `docs/windows-notes.md` (read before changing).
+- `windows.rs` — shipping target, Toolhelp snapshot backend (`windows-sys`). `role` comes from SCM enumeration (`EnumServicesStatusExW`, `SC_ENUM_PROCESS_INFO`) mapping active services to host PIDs — best-effort, empty map on failure. `holders` uses Restart Manager (files only). PID-reuse caveats in `docs/windows-notes.md` (read before changing).
 - `mock.rs` — `MockProvider` from a JSON array of `ProcessInfo`; used by CLI e2e tests via `ph --snapshot`. `holders` is answered from each process's `open_files` (exact match, or `<query>/` prefix for directory-style queries).
 
 ## `build_tree` invariants (tested in `tree.rs`)
