@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/Embers-of-the-Fire/prochist/compare/prochist-cli-v0.2.0...prochist-cli-v0.3.0) - 2026-10-21
+
+### Added
+
+- [**breaking**] tag Windows service host processes via SCM enumeration ([#10](https://github.com/Embers-of-the-Fire/prochist/pull/10))
+- feat!(tui): add process searcher ([#8](https://github.com/Embers-of-the-Fire/prochist/pull/8))
+
 ## [0.2.0](https://github.com/Embers-of-the-Fire/prochist/compare/prochist-cli-v0.1.0...prochist-cli-v0.2.0) - 2026-10-05
 
 ### Added
