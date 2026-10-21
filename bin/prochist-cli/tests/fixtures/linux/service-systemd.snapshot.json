@@ -1,0 +1,6 @@
+[
+  {"pid": 1, "ppid": 0, "name": "systemd", "exe": "/usr/lib/systemd/systemd"},
+  {"pid": 600, "ppid": 1, "name": "sshd", "exe": "/usr/sbin/sshd", "role": {"SystemdService": {"unit": "sshd.service"}}},
+  {"pid": 700, "ppid": 1, "name": "cupsd", "exe": "/usr/sbin/cupsd", "role": {"SystemdService": {"unit": "cups.service"}}},
+  {"pid": 800, "ppid": 600, "name": "sshd-session", "exe": "/usr/libexec/sshd-session"}
+]

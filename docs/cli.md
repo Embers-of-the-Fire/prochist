@@ -36,6 +36,49 @@ $ ph -f /var/log/app.log
 On Windows only files are supported (the backend uses Restart Manager, which
 accepts file paths only); `ph -f DIR` exits 1 with an error.
 
+## Service tags
+
+On Windows, processes that host services registered with the Service Control
+Manager are annotated with a `[[WinService]]` tag that replaces the binary name
+in the default view; a PID hosting several services shows `(+N)` after the
+first service name. With `-E/--executable` the real binary path is shown
+followed by the tag:
+
+```
+$ ph -p 800
+├── System (4)
+├── services.exe (500)
+├── [[WinService]] FooSvc (600)
+└── helper.exe (800)
+
+$ ph -E -p 800
+├── System (4)
+├── C:\Windows\System32\services.exe (500)
+├── C:\Services\FooSvc.exe [[WinService]] FooSvc (600)
+└── C:\Services\helper.exe (800)
+```
+
+Only the service host process itself is tagged; a process launched *by* a
+service keeps its plain name — walk the ancestor chain upward to find the
+nearest tagged service. Tagging is best-effort: if the SCM query fails, the
+tree still prints, just without tags.
+
+On Linux, processes running directly inside a systemd `.service` unit
+(detected from `/proc/<pid>/cgroup`, cgroup v2 or the v1 `name=systemd`
+hierarchy) are annotated with a `[[SystemdService]]` tag naming the unit,
+with the same tag-replaces-name / path-then-tag behavior as on Windows:
+
+```
+$ ph -p 800
+├── systemd (1)
+├── [[SystemdService]] sshd.service (600)
+└── sshd-session (800)
+```
+
+Processes in scopes (user sessions, containers) are not tagged. If the
+cgroup file is unreadable or the system is not systemd-managed, no tags are
+shown.
+
 ## Flags
 
 | Flag | Effect |
@@ -84,6 +127,6 @@ $ ph -M 2 -C 2 -p 300
 
 - `--snapshot <FILE.json>` — replaces the OS process table with a mocked
   snapshot loaded from a JSON array of `{"pid", "ppid", "name"}` objects
-  (optional fields: `command`, `exe`, `open_files`). `ph -f` queries against
-  a mock are answered from each process's `open_files` list. Used by the
-  end-to-end test suite; hidden from `--help`.
+  (optional fields: `command`, `exe`, `open_files`, `role`). `ph -f` queries
+  against a mock are answered from each process's `open_files` list. Used by
+  the end-to-end test suite; hidden from `--help`.

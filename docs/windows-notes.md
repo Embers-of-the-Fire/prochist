@@ -11,6 +11,16 @@ Windows is the shipping target for `ph`. The backend (`WindowsProvider` in
 `exe` is populated best-effort via `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)`
 + `QueryFullProcessImageNameW`; `command` stays `None` (not exposed by Toolhelp).
 
+`role` is populated best-effort from the Service Control Manager:
+`OpenSCManagerW(SC_MANAGER_ENUMERATE_SERVICE)` + `EnumServicesStatusExW`
+(`SC_ENUM_PROCESS_INFO`, `SERVICE_WIN32`, `SERVICE_ACTIVE`) maps each active
+service to the PID of its host process. One `svchost.exe` process hosts many
+services, so a PID can map to a list of `ServiceEntry`s. If SCM enumeration
+fails (restricted token, SCM busy) the snapshot still succeeds — processes
+simply get `role: None` and no `[[WinService]]` tags are shown. Only the exact
+host PID is tagged; processes *spawned by* a service are found by walking the
+ancestor chain to the tagged host.
+
 File-holder queries (`ph -f FILE`) use the Restart Manager API
 (`RmStartSession` → `RmRegisterResources` → `RmGetList` → `RmEndSession` from
 `rstrtmgr.dll`) rather than a full system handle scan: it is documented,

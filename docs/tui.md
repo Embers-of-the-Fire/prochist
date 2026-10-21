@@ -24,8 +24,16 @@ holds the path, `phi` exits 1 like `ph`. As with `ph`, `-f DIR` is Linux-only
 
 - **Processes** (top, fills): the ancestor chain, the target process (cyan,
   bold), and its children — same shape as `ph` output, one row per process.
-- **Details** (bottom, fixed 7 rows): PID, PPID, Name, Command, Executable of
-  the selected row.
+- **Details** (bottom, fixed 8 rows): PID, PPID, Name, Command, Executable,
+  Service of the selected row. The Service field lists the Windows service
+  name(s) hosted by the process, with the display name in parentheses when
+  known (`FooSvc (Foo Service), BarSvc`), or the systemd unit for Linux
+  service processes (`sshd.service`); it is `-` for ordinary processes.
+
+Service host processes are rendered as `[[WinService]] <name>` in the tree,
+holders, and processes rows (mirroring `ph`); a PID hosting several services
+shows `(+N)` after the first name. Linux service processes are rendered as
+`[[SystemdService]] <unit>`.
 - **Status bar** (bottom line): mode tag
   (`TREE`/`HOLDERS`/`PROCESSES`/`DETAIL`/`ACTIONS`/`SEARCH`/`HELP`), cursor
   position, focus breadcrumb when re-rooted (e.g. `ph > worker`), the search
@@ -49,7 +57,7 @@ process list; in the tree and holders views it jumps to the first match on
 `Enter`, and `n` / `N` cycle through the remaining matches. Matching is a
 case-insensitive substring over the process name and command line; a field
 prefix narrows it: `pid:300` (PID prefix), `name:vim`, `cmd:--daemon`,
-`exe:/usr/bin`.
+`exe:/usr/bin`, `service:rpc` (service name or display name).
 
 ## Holders view
 

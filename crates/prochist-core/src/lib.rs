@@ -10,7 +10,7 @@ mod linux;
 mod windows;
 
 pub use mock::MockProvider;
-pub use model::{Pid, ProcessInfo, ProcessTree};
+pub use model::{Pid, ProcessInfo, ProcessRole, ProcessTree, ServiceEntry};
 pub use provider::ProcessProvider;
 pub use tree::{TreeError, build_tree};
 

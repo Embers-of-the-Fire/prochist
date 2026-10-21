@@ -1,0 +1,8 @@
+bin.name = "ph"
+args = "--snapshot tests/fixtures/windows/service.snapshot.json -p 800"
+stdout = """
+├── System (4)
+├── services (500)
+├── [[WinService]] FooSvc (600)
+└── helper (800)
+"""

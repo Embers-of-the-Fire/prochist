@@ -12,8 +12,8 @@ The `ph` binary. Owns ALL user-facing output (`render.rs`); `prochist-core` must
 
 - `src/main.rs` — clap 4 derive CLI, provider selection, error → exit-code mapping. Keep it thin; formatting decisions go in `render.rs`.
 - `src/render.rs` — pure `render(&ProcessTree, &RenderOptions) -> String` for tree mode and `render_holders(&Path, &[ProcessInfo], &RenderOptions) -> String` for `-f` mode. Unit-tested with exact-string assertions.
-- `tests/cli.rs` — single trycmd runner over `tests/fixtures/*.toml`.
-- `tests/fixtures/*.toml` + `*.snapshot.json` — one case per behavior.
+- `tests/cli.rs` — single trycmd runner over `tests/fixtures/*.toml` plus the `#[cfg]`-gated platform subdirs.
+- `tests/fixtures/*.toml` + `*.snapshot.json` — one case per behavior, portable across platforms. Platform-scenario cases live in `tests/fixtures/windows/` (e.g. WinService tags, `C:/` paths) and `tests/fixtures/linux/` (e.g. systemd units, `-f DIR`) and only run on that platform; they can only be blessed there (`TRYCMD=overwrite` on a matching host/CI).
 
 ## Conventions / invariants
 
@@ -22,6 +22,6 @@ The `ph` binary. Owns ALL user-facing output (`render.rs`); `prochist-core` must
 - Two modes: tree (`-p PID`, default = self) and file holders (`-f FILE|DIR`). They conflict; `-M` also conflicts with `-f`. `-C` caps children in tree mode and holders in `-f` mode. `-f DIR` is Linux-only (Windows backend returns `InvalidInput` — Restart Manager accepts files only).
 - `--snapshot <FILE>` is `hide = true` — testing only, never document it in `--help` output (it is documented in `docs/cli.md` for devs).
 - Default PID = `std::process::id()` (ph inspects itself); fixture `default-self.toml` covers this.
-- Name shown = basename of `exe` when available, else `name` from the provider; `-E/--executable` shows the full `exe` path. Binary name is never truncated.
+- Name shown = basename of `exe` when available, else `name` from the provider; `-E/--executable` shows the full `exe` path. Binary name is never truncated. Exception: a process with `role` set renders as a tag instead (`[[WinService]] name (+N)` / `[[SystemdService]] unit`); in `-E` mode the binary path is shown followed by the tag.
 - Omitted entries print `... N process(es) omitted` (singular/plural handled in `render.rs`); `-M` omits the OLDEST ancestors, `-C` keeps the FIRST children by PID.
 - New renderable flag = new clap field → `RenderOptions` field → render unit test → `.toml` fixture → `docs/cli.md` flags table. All five, or the change is incomplete. CLI-only flags rejected before provider work (like `--search`) are exempt from the `RenderOptions` field and render test; they still need a clap field, a rejection fixture, and a `docs/cli.md` entry.

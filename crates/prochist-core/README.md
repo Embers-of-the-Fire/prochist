@@ -8,8 +8,9 @@ render it differently.
 
 ## Contents
 
-- `model` — `ProcessInfo { pid, ppid, name, command?, exe? }` (serde),
-  `ProcessTree { ancestors, current, children }`. `Pid = u32`.
+- `model` — `ProcessInfo { pid, ppid, name, command?, exe?, role? }` (serde),
+  `ProcessTree { ancestors, current, children }`. `Pid = u32`. `role` marks
+  service-manager-launched processes (e.g. `ProcessRole::WindowsService`).
 - `provider` — the single-method trait
   `ProcessProvider::snapshot() -> io::Result<Vec<ProcessInfo>>`, implemented by
   all platform backends and test mocks.

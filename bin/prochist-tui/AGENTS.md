@@ -36,9 +36,9 @@ testing flag) and the `phi: error: ...` / exit-code-1 error convention.
   tree/holders it is jump-to-match: `Enter` fills `App::matches` and selects
   the first, `n`/`N` cycle; matches are cleared whenever rows/holders are
   replaced. Query syntax: case-insensitive substring, field prefixes
-  `pid:`/`name:`/`cmd:`/`exe:`, no prefix = name + command.
+  `pid:`/`name:`/`cmd:`/`exe:`/`service:`, no prefix = name + command.
 - `src/ui.rs` — ratatui rendering: tree pane or holders pane (Fill), details
-  pane (fixed 7), status bar (mode tag, position, focus breadcrumb), action
+  pane (fixed 8), status bar (mode tag, position, focus breadcrumb), action
   popup, help overlay. Tested with `TestBackend`.
 - `src/clipboard.rs` — OSC 52 yank (`ESC ] 52 ; c ; <base64> ST`), with an
   in-crate base64 encoder. No clipboard crate by design (no platform deps,
@@ -58,5 +58,9 @@ testing flag) and the `phi: error: ...` / exit-code-1 error convention.
   (preserves filter and selection by PID).
 - Selection/details access goes through `App::selected_info()` / `position()`
   — view-aware; never index `app.rows[app.selected]` directly in `ui.rs`.
-- Detail pane height is fixed at 7 (5 fields + borders); adding a field to
+- Detail pane height is fixed at 8 (6 fields + borders); adding a field to
   `FIELD_LABELS` means bumping that constraint in `ui.rs`.
+- Processes with `role` set are rendered as a tag (`[[WinService]] name (+N)`
+  / `[[SystemdService]] unit`) instead of the binary name via `display_name`;
+  the full service info lives in the "Service" detail field, and the
+  `service:` search prefix matches service names/display names (or the unit).

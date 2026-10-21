@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use prochist_core::{Pid, ProcessInfo, ProcessTree};
+use prochist_core::{Pid, ProcessInfo, ProcessRole, ProcessTree};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
@@ -37,15 +37,50 @@ pub struct Row {
     pub is_current: bool,
 }
 
-pub const FIELD_LABELS: [&str; 5] = ["PID", "PPID", "Name", "Command", "Executable"];
+pub const FIELD_LABELS: [&str; 6] = ["PID", "PPID", "Name", "Command", "Executable", "Service"];
+
+pub fn role_tag(p: &ProcessInfo) -> Option<String> {
+    match &p.role {
+        Some(ProcessRole::WindowsService { services }) => {
+            let first = services.first()?;
+            let mut tag = format!("[[WinService]] {}", first.name);
+            if services.len() > 1 {
+                tag.push_str(&format!(" (+{})", services.len() - 1));
+            }
+            Some(tag)
+        }
+        Some(ProcessRole::SystemdService { unit }) => Some(format!("[[SystemdService]] {unit}")),
+        None => None,
+    }
+}
 
 pub fn display_name(p: &ProcessInfo) -> String {
+    if let Some(tag) = role_tag(p) {
+        return tag;
+    }
     match &p.exe {
         Some(exe) => Path::new(exe)
             .file_name()
             .map(|f| f.to_string_lossy().into_owned())
             .unwrap_or_else(|| p.name.clone()),
         None => p.name.clone(),
+    }
+}
+
+fn service_field(info: &ProcessInfo) -> Option<String> {
+    match &info.role {
+        Some(ProcessRole::WindowsService { services }) if !services.is_empty() => {
+            let names: Vec<String> = services
+                .iter()
+                .map(|s| match &s.display_name {
+                    Some(d) => format!("{} ({d})", s.name),
+                    None => s.name.clone(),
+                })
+                .collect();
+            Some(names.join(", "))
+        }
+        Some(ProcessRole::SystemdService { unit }) => Some(unit.clone()),
+        _ => None,
     }
 }
 
@@ -56,6 +91,7 @@ pub fn fields(info: &ProcessInfo) -> Vec<Option<String>> {
         Some(info.name.clone()),
         info.command.clone(),
         info.exe.clone(),
+        service_field(info),
     ]
 }
 
@@ -66,6 +102,7 @@ enum SearchField {
     Name,
     Cmd,
     Exe,
+    Service,
 }
 
 fn parse_query(query: &str) -> (SearchField, &str) {
@@ -74,6 +111,7 @@ fn parse_query(query: &str) -> (SearchField, &str) {
         ("name:", SearchField::Name),
         ("cmd:", SearchField::Cmd),
         ("exe:", SearchField::Exe),
+        ("service:", SearchField::Service),
     ];
     for (prefix, field) in prefixes {
         if let Some(rest) = query.strip_prefix(prefix) {
@@ -94,6 +132,7 @@ fn field_matches(info: &ProcessInfo, field: SearchField, query: &str) -> bool {
         SearchField::Name => contains(&info.name),
         SearchField::Cmd => info.command.as_deref().is_some_and(contains),
         SearchField::Exe => info.exe.as_deref().is_some_and(contains),
+        SearchField::Service => service_field(info).as_deref().is_some_and(contains),
     }
 }
 
@@ -194,7 +233,7 @@ pub const HELP_LINES: [&str; 63] = [
     "                  jump-to-match in tree/holders)",
     "  n / N           next / previous match (tree/holders)",
     "  Enter           apply the query, Esc cancel",
-    "  field prefixes  pid: name: cmd: exe:",
+    "  field prefixes  pid: name: cmd: exe: service:",
     "  (no prefix)     match name + command",
     "",
     "Holders view (phi -f PATH)",
@@ -306,6 +345,7 @@ impl App {
                 command: None,
                 exe: None,
                 open_files: Vec::new(),
+                role: None,
             },
             children: Vec::new(),
         });
@@ -332,6 +372,7 @@ impl App {
                 command: None,
                 exe: None,
                 open_files: Vec::new(),
+                role: None,
             },
             children: Vec::new(),
         });
@@ -1078,6 +1119,7 @@ mod tests {
             command: None,
             exe: None,
             open_files: Vec::new(),
+            role: None,
         }
     }
 
@@ -1212,6 +1254,9 @@ mod tests {
         app.handle_key(key(KeyCode::Char('j')));
         app.handle_key(key(KeyCode::Char('j')));
         app.handle_key(key(KeyCode::Char('j')));
+        app.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(app.detail_selected, 5);
+        app.handle_key(key(KeyCode::Char('k')));
         assert_eq!(app.detail_selected, 4);
         let effect = app.handle_key(key(KeyCode::Char('y')));
         assert_eq!(effect, Some(Effect::Copy("/usr/local/bin/ph".to_string())));
@@ -1535,7 +1580,89 @@ mod tests {
         assert_eq!(parse_query("name:foo"), (SearchField::Name, "foo"));
         assert_eq!(parse_query("cmd:bar"), (SearchField::Cmd, "bar"));
         assert_eq!(parse_query("exe:baz"), (SearchField::Exe, "baz"));
+        assert_eq!(parse_query("service:rpc"), (SearchField::Service, "rpc"));
         assert_eq!(parse_query("plain"), (SearchField::Any, "plain"));
+    }
+
+    fn windows_service() -> ProcessInfo {
+        let mut svc = proc(600, 500, "FooSvc.exe");
+        svc.exe = Some("C:\\Services\\FooSvc.exe".to_string());
+        svc.role = Some(ProcessRole::WindowsService {
+            services: vec![
+                prochist_core::ServiceEntry {
+                    name: "FooSvc".to_string(),
+                    display_name: Some("Foo Service".to_string()),
+                },
+                prochist_core::ServiceEntry {
+                    name: "BarSvc".to_string(),
+                    display_name: None,
+                },
+            ],
+        });
+        svc
+    }
+
+    #[test]
+    fn display_name_uses_service_tag_when_role_is_set() {
+        assert_eq!(
+            display_name(&windows_service()),
+            "[[WinService]] FooSvc (+1)"
+        );
+    }
+
+    #[test]
+    fn fields_include_service_names_and_display_names() {
+        assert_eq!(
+            fields(&windows_service())[5].as_deref(),
+            Some("FooSvc (Foo Service), BarSvc")
+        );
+    }
+
+    fn systemd_service() -> ProcessInfo {
+        let mut svc = proc(600, 1, "sshd");
+        svc.exe = Some("/usr/sbin/sshd".to_string());
+        svc.role = Some(ProcessRole::SystemdService {
+            unit: "sshd.service".to_string(),
+        });
+        svc
+    }
+
+    #[test]
+    fn display_name_uses_systemd_tag_when_role_is_set() {
+        assert_eq!(
+            display_name(&systemd_service()),
+            "[[SystemdService]] sshd.service"
+        );
+    }
+
+    #[test]
+    fn fields_include_systemd_unit() {
+        assert_eq!(
+            fields(&systemd_service())[5].as_deref(),
+            Some("sshd.service")
+        );
+    }
+
+    #[test]
+    fn service_search_matches_systemd_unit() {
+        let svc = systemd_service();
+        assert!(field_matches(&svc, SearchField::Service, "sshd.service"));
+        assert!(field_matches(&svc, SearchField::Service, "sshd"));
+        assert!(!field_matches(&svc, SearchField::Service, "zzz"));
+    }
+
+    #[test]
+    fn service_search_matches_name_and_display_name() {
+        let svc = windows_service();
+        assert!(field_matches(&svc, SearchField::Service, "foosvc"));
+        assert!(field_matches(&svc, SearchField::Service, "foo service"));
+        assert!(field_matches(&svc, SearchField::Service, "bar"));
+        assert!(!field_matches(&svc, SearchField::Service, "zzz"));
+        assert!(!field_matches(
+            &proc(1, 0, "init"),
+            SearchField::Service,
+            "a"
+        ));
     }
 
     #[test]

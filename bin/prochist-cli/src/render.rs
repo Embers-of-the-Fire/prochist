@@ -1,7 +1,7 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
-use prochist_core::{ProcessInfo, ProcessTree};
+use prochist_core::{ProcessInfo, ProcessRole, ProcessTree};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RenderOptions {
@@ -44,6 +44,30 @@ fn name_of(p: &ProcessInfo, executable: bool) -> String {
     }
 }
 
+fn role_tag(p: &ProcessInfo) -> Option<String> {
+    match &p.role {
+        Some(ProcessRole::WindowsService { services }) => {
+            let first = services.first()?;
+            let mut tag = format!("[[WinService]] {}", first.name);
+            if services.len() > 1 {
+                let _ = write!(tag, " (+{})", services.len() - 1);
+            }
+            Some(tag)
+        }
+        Some(ProcessRole::SystemdService { unit }) => Some(format!("[[SystemdService]] {unit}")),
+        None => None,
+    }
+}
+
+fn node_label(p: &ProcessInfo, opts: &RenderOptions) -> String {
+    let name = name_of(p, opts.executable);
+    match role_tag(p) {
+        Some(tag) if opts.executable => format!("{name} {tag}"),
+        Some(tag) => tag,
+        None => name,
+    }
+}
+
 fn node(
     out: &mut String,
     g: &Glyphs,
@@ -54,12 +78,7 @@ fn node(
 ) {
     let base = g.blank.repeat(indent);
     let connector = if is_last { g.last } else { g.branch };
-    let _ = writeln!(
-        out,
-        "{base}{connector}{} ({})",
-        name_of(p, opts.executable),
-        p.pid
-    );
+    let _ = writeln!(out, "{base}{connector}{} ({})", node_label(p, opts), p.pid);
     if opts.long
         && let Some(command) = &p.command
     {
@@ -138,6 +157,7 @@ mod tests {
             command: None,
             exe: None,
             open_files: Vec::new(),
+            role: None,
         }
     }
 
@@ -310,5 +330,88 @@ mod tests {
         };
         let expected = "|-- ... 1 process omitted\n|-- bash (200)\n+-- ph (300)\n    /usr/local/bin/ph 300\n    |-- worker (301)\n    |   /usr/bin/worker --daemon\n    +-- ... 1 process omitted\n";
         assert_eq!(render(&sample(), &opts), expected);
+    }
+
+    fn service_tree() -> ProcessTree {
+        let mut services = proc(500, 400, "services.exe");
+        services.exe = Some("C:/Windows/System32/services.exe".to_string());
+        let mut svc = proc(600, 500, "FooSvc.exe");
+        svc.exe = Some("C:/Services/FooSvc.exe".to_string());
+        svc.role = Some(ProcessRole::WindowsService {
+            services: vec![prochist_core::ServiceEntry {
+                name: "FooSvc".to_string(),
+                display_name: Some("Foo Service".to_string()),
+            }],
+        });
+        let mut shared = proc(700, 500, "svchost.exe");
+        shared.role = Some(ProcessRole::WindowsService {
+            services: vec![
+                prochist_core::ServiceEntry {
+                    name: "DcomLaunch".to_string(),
+                    display_name: None,
+                },
+                prochist_core::ServiceEntry {
+                    name: "RpcSs".to_string(),
+                    display_name: None,
+                },
+            ],
+        });
+        let mut helper = proc(800, 700, "helper.exe");
+        helper.exe = Some("C:/Services/helper.exe".to_string());
+        ProcessTree {
+            ancestors: vec![services, svc],
+            current: shared,
+            children: vec![helper],
+        }
+    }
+
+    #[test]
+    fn windows_service_replaces_name_with_tag() {
+        let expected = "├── services.exe (500)\n├── [[WinService]] FooSvc (600)\n└── [[WinService]] DcomLaunch (+1) (700)\n    └── helper.exe (800)\n";
+        assert_eq!(render(&service_tree(), &RenderOptions::default()), expected);
+    }
+
+    #[test]
+    fn windows_service_tag_follows_binary_in_executable_mode() {
+        let opts = RenderOptions {
+            executable: true,
+            ..Default::default()
+        };
+        let expected = "├── C:/Windows/System32/services.exe (500)\n├── C:/Services/FooSvc.exe [[WinService]] FooSvc (600)\n└── svchost.exe [[WinService]] DcomLaunch (+1) (700)\n    └── C:/Services/helper.exe (800)\n";
+        assert_eq!(render(&service_tree(), &opts), expected);
+    }
+
+    fn systemd_tree() -> ProcessTree {
+        let mut init = proc(1, 0, "systemd");
+        init.exe = Some("/usr/lib/systemd/systemd".to_string());
+        let mut sshd = proc(600, 1, "sshd");
+        sshd.exe = Some("/usr/sbin/sshd".to_string());
+        sshd.role = Some(ProcessRole::SystemdService {
+            unit: "sshd.service".to_string(),
+        });
+        let mut session = proc(800, 600, "sshd-session");
+        session.exe = Some("/usr/libexec/sshd-session".to_string());
+        ProcessTree {
+            ancestors: vec![init, sshd],
+            current: session,
+            children: vec![],
+        }
+    }
+
+    #[test]
+    fn systemd_service_replaces_name_with_tag() {
+        let expected =
+            "├── systemd (1)\n├── [[SystemdService]] sshd.service (600)\n└── sshd-session (800)\n";
+        assert_eq!(render(&systemd_tree(), &RenderOptions::default()), expected);
+    }
+
+    #[test]
+    fn systemd_service_tag_follows_binary_in_executable_mode() {
+        let opts = RenderOptions {
+            executable: true,
+            ..Default::default()
+        };
+        let expected = "├── /usr/lib/systemd/systemd (1)\n├── /usr/sbin/sshd [[SystemdService]] sshd.service (600)\n└── /usr/libexec/sshd-session (800)\n";
+        assert_eq!(render(&systemd_tree(), &opts), expected);
     }
 }

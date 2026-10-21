@@ -1,0 +1,7 @@
+bin.name = "ph"
+args = "--snapshot tests/fixtures/linux/service-systemd.snapshot.json -p 800"
+stdout = """
+├── systemd (1)
+├── [[SystemdService]] sshd.service (600)
+└── sshd-session (800)
+"""
