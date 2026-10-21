@@ -19,7 +19,7 @@ Rust workspace. `ph` — prints the process tree around a PID (`-p`) or the proc
 
 ## Testing
 
-- E2E tests are trycmd cases in `bin/prochist-cli/tests/fixtures/*.toml`, each pointing at a `*.snapshot.json` fed via the hidden `ph --snapshot <FILE>` flag (swaps the OS provider for `MockProvider`; never document it in `--help`).
+- E2E tests are trycmd cases in `bin/prochist-cli/tests/fixtures/*.toml`, each pointing at a `*.snapshot.json` fed via the hidden `ph --snapshot <FILE>` flag (swaps the OS provider for `MockProvider`; never document it in `--help`). Platform-scenario cases live in `tests/fixtures/{windows,linux}/` and are `#[cfg]`-gated in `tests/cli.rs` — they run (and bless) only on that platform.
 - New CLI behavior = new `.toml` fixture + `.snapshot.json`; run `TRYCMD=overwrite cargo test` then review the diff.
 
 ## Platform notes

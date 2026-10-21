@@ -1,5 +1,5 @@
 bin.name = "ph"
-args = "--snapshot tests/fixtures/service.snapshot.json -p 800"
+args = "--snapshot tests/fixtures/windows/service.snapshot.json -p 800"
 stdout = """
 ├── System (4)
 ├── services (500)
