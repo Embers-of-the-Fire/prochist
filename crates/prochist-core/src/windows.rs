@@ -232,41 +232,56 @@ fn service_roles() -> HashMap<Pid, Vec<ServiceEntry>> {
         return map;
     }
 
-    let mut buffer = vec![0u8; needed as usize];
-    resume = 0;
-    let ok = unsafe {
-        EnumServicesStatusExW(
-            scm.0,
-            SC_ENUM_PROCESS_INFO,
-            SERVICE_WIN32,
-            SERVICE_ACTIVE,
-            buffer.as_mut_ptr(),
-            buffer.len() as u32,
-            &mut needed,
-            &mut count,
-            &mut resume,
-            std::ptr::null(),
-        )
-    };
-    if ok == 0 {
-        return map;
-    }
-
-    let entries = unsafe {
-        std::slice::from_raw_parts(
-            buffer.as_ptr() as *const ENUM_SERVICE_STATUS_PROCESSW,
-            count as usize,
-        )
-    };
-    for entry in entries {
-        let pid = entry.ServiceStatusProcess.dwProcessId;
-        if pid == 0 {
-            continue;
+    const ENTRY_SIZE: usize = std::mem::size_of::<ENUM_SERVICE_STATUS_PROCESSW>();
+    let mut capacity = needed as usize + ENTRY_SIZE;
+    // Vec<ENUM_SERVICE_STATUS_PROCESSW> gives us storage with the correct
+    // alignment; a Vec<u8> could be misaligned for the returned struct array.
+    let mut storage: Vec<ENUM_SERVICE_STATUS_PROCESSW> = Vec::new();
+    for _ in 0..5 {
+        storage.clear();
+        storage.resize(
+            capacity.div_ceil(ENTRY_SIZE),
+            ENUM_SERVICE_STATUS_PROCESSW {
+                lpServiceName: std::ptr::null_mut(),
+                lpDisplayName: std::ptr::null_mut(),
+                ServiceStatusProcess: unsafe { std::mem::zeroed() },
+            },
+        );
+        resume = 0;
+        count = 0;
+        let ok = unsafe {
+            EnumServicesStatusExW(
+                scm.0,
+                SC_ENUM_PROCESS_INFO,
+                SERVICE_WIN32,
+                SERVICE_ACTIVE,
+                storage.as_mut_ptr() as *mut u8,
+                (storage.len() * ENTRY_SIZE) as u32,
+                &mut needed,
+                &mut count,
+                &mut resume,
+                std::ptr::null(),
+            )
+        };
+        if ok != 0 {
+            for entry in &storage[..count as usize] {
+                let pid = entry.ServiceStatusProcess.dwProcessId;
+                if pid == 0 {
+                    continue;
+                }
+                map.entry(pid).or_default().push(ServiceEntry {
+                    name: wide_string(entry.lpServiceName),
+                    display_name: non_empty_wide_string(entry.lpDisplayName),
+                });
+            }
+            return map;
         }
-        map.entry(pid).or_default().push(ServiceEntry {
-            name: wide_string(entry.lpServiceName),
-            display_name: non_empty_wide_string(entry.lpDisplayName),
-        });
+        // The active service list can grow after the size query; retry with
+        // the newly reported size instead of dropping all service tags.
+        if unsafe { GetLastError() } != ERROR_MORE_DATA || needed as usize <= capacity {
+            return map;
+        }
+        capacity = needed as usize + ENTRY_SIZE;
     }
     map
 }
