@@ -334,9 +334,9 @@ mod tests {
 
     fn service_tree() -> ProcessTree {
         let mut services = proc(500, 400, "services.exe");
-        services.exe = Some("C:\\Windows\\System32\\services.exe".to_string());
+        services.exe = Some("C:/Windows/System32/services.exe".to_string());
         let mut svc = proc(600, 500, "FooSvc.exe");
-        svc.exe = Some("C:\\Services\\FooSvc.exe".to_string());
+        svc.exe = Some("C:/Services/FooSvc.exe".to_string());
         svc.role = Some(ProcessRole::WindowsService {
             services: vec![prochist_core::ServiceEntry {
                 name: "FooSvc".to_string(),
@@ -357,7 +357,7 @@ mod tests {
             ],
         });
         let mut helper = proc(800, 700, "helper.exe");
-        helper.exe = Some("C:\\Services\\helper.exe".to_string());
+        helper.exe = Some("C:/Services/helper.exe".to_string());
         ProcessTree {
             ancestors: vec![services, svc],
             current: shared,
@@ -377,7 +377,7 @@ mod tests {
             executable: true,
             ..Default::default()
         };
-        let expected = "├── C:\\Windows\\System32\\services.exe (500)\n├── C:\\Services\\FooSvc.exe [[WinService]] FooSvc (600)\n└── svchost.exe [[WinService]] DcomLaunch (+1) (700)\n    └── C:\\Services\\helper.exe (800)\n";
+        let expected = "├── C:/Windows/System32/services.exe (500)\n├── C:/Services/FooSvc.exe [[WinService]] FooSvc (600)\n└── svchost.exe [[WinService]] DcomLaunch (+1) (700)\n    └── C:/Services/helper.exe (800)\n";
         assert_eq!(render(&service_tree(), &opts), expected);
     }
 }
