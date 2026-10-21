@@ -36,9 +36,9 @@ testing flag) and the `phi: error: ...` / exit-code-1 error convention.
   tree/holders it is jump-to-match: `Enter` fills `App::matches` and selects
   the first, `n`/`N` cycle; matches are cleared whenever rows/holders are
   replaced. Query syntax: case-insensitive substring, field prefixes
-  `pid:`/`name:`/`cmd:`/`exe:`, no prefix = name + command.
+  `pid:`/`name:`/`cmd:`/`exe:`/`service:`, no prefix = name + command.
 - `src/ui.rs` — ratatui rendering: tree pane or holders pane (Fill), details
-  pane (fixed 7), status bar (mode tag, position, focus breadcrumb), action
+  pane (fixed 8), status bar (mode tag, position, focus breadcrumb), action
   popup, help overlay. Tested with `TestBackend`.
 - `src/clipboard.rs` — OSC 52 yank (`ESC ] 52 ; c ; <base64> ST`), with an
   in-crate base64 encoder. No clipboard crate by design (no platform deps,
