@@ -1,7 +1,7 @@
 [
   {"pid": 4, "ppid": 0, "name": "System"},
-  {"pid": 500, "ppid": 4, "name": "services.exe", "exe": "C:\\Windows\\System32\\services.exe"},
-  {"pid": 600, "ppid": 500, "name": "FooSvc.exe", "exe": "C:\\Services\\FooSvc.exe", "role": {"WindowsService": {"services": [{"name": "FooSvc", "display_name": "Foo Service"}]}}},
-  {"pid": 700, "ppid": 500, "name": "svchost.exe", "exe": "C:\\Windows\\System32\\svchost.exe", "role": {"WindowsService": {"services": [{"name": "DcomLaunch"}, {"name": "RpcSs", "display_name": "Remote Procedure Call (RPC)"}]}}},
-  {"pid": 800, "ppid": 600, "name": "helper.exe", "exe": "C:\\Services\\helper.exe"}
+  {"pid": 500, "ppid": 4, "name": "services", "exe": "C:/Windows/System32/services"},
+  {"pid": 600, "ppid": 500, "name": "FooSvc", "exe": "C:/Services/FooSvc", "role": {"WindowsService": {"services": [{"name": "FooSvc", "display_name": "Foo Service"}]}}},
+  {"pid": 700, "ppid": 500, "name": "svchost", "exe": "C:/Windows/System32/svchost", "role": {"WindowsService": {"services": [{"name": "DcomLaunch"}, {"name": "RpcSs", "display_name": "Remote Procedure Call (RPC)"}]}}},
+  {"pid": 800, "ppid": 600, "name": "helper", "exe": "C:/Services/helper"}
 ]

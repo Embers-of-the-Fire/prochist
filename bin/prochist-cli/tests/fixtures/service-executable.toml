@@ -2,6 +2,6 @@ bin.name = "ph"
 args = "--snapshot tests/fixtures/service.snapshot.json -E -p 700"
 stdout = """
 ├── System (4)
-├── C:/Windows/System32/services[EXE] (500)
-└── C:/Windows/System32/svchost[EXE] [[WinService]] DcomLaunch (+1) (700)
+├── C:/Windows/System32/services (500)
+└── C:/Windows/System32/svchost [[WinService]] DcomLaunch (+1) (700)
 """
