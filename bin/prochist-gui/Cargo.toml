@@ -1,0 +1,18 @@
+[package]
+name = "prochist-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "phg - interactive GUI for the process tree around a PID"
+
+[[bin]]
+name = "phg"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+gpui-kit.workspace = true
+prochist-core = { version = "0.3.0", path = "../../crates/prochist-core" }
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
