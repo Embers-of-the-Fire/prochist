@@ -40,9 +40,9 @@ testing flag) and the `phi: error: ...` / exit-code-1 error convention.
 - `src/ui.rs` — ratatui rendering: tree pane or holders pane (Fill), details
   pane (fixed 8), status bar (mode tag, position, focus breadcrumb), action
   popup, help overlay. Tested with `TestBackend`.
-- `src/clipboard.rs` — OSC 52 yank (`ESC ] 52 ; c ; <base64> ST`), with an
-  in-crate base64 encoder. No clipboard crate by design (no platform deps,
-  works over SSH); terminals without OSC 52 support silently ignore it.
+- `src/clipboard.rs` — OSC 52 yank (`ESC ] 52 ; c ; <base64> ST`), payload
+  encoded with the `base64` crate. No clipboard crate by design (no platform
+  deps, works over SSH); terminals without OSC 52 support silently ignore it.
 
 ## Conventions / invariants
 

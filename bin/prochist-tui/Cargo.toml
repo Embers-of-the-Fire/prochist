@@ -10,6 +10,7 @@ name = "phi"
 path = "src/main.rs"
 
 [dependencies]
+base64.workspace = true
 clap.workspace = true
 crossterm.workspace = true
 ratatui.workspace = true

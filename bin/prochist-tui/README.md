@@ -42,7 +42,7 @@ SSH); terminals without OSC 52 support silently ignore it. Full reference:
   returns `Option<Effect>` instead of doing I/O, so the whole keymap is
   unit-tested.
 - `src/ui.rs` — ratatui rendering, tested with `TestBackend`.
-- `src/clipboard.rs` — OSC 52 yank with an in-crate base64 encoder.
+- `src/clipboard.rs` — OSC 52 yank (payload base64-encoded via the `base64` crate).
 
 ## Testing
 

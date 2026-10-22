@@ -9,6 +9,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/y4nettechi/prochist"
 
 [workspace.dependencies]
+base64 = "0.23"
 clap = { version = "4.6", features = ["derive"] }
 crossterm = "0.29"
 ratatui = "0.30"
