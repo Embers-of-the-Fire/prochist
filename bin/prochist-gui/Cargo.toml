@@ -12,7 +12,7 @@ path = "src/main.rs"
 [dependencies]
 clap.workspace = true
 gpui-kit.workspace = true
-prochist-core = { version = "0.3.0", path = "../../crates/prochist-core" }
+prochist-core.workspace = true
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
