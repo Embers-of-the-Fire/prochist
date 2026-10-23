@@ -234,6 +234,44 @@ mod tests {
     }
 
     #[gpui_kit::test]
+    fn refresh_keeps_selection_on_still_matching_row(cx: &mut TestAppContext) {
+        // Move to the second match (bash, 200), then refresh: the selection
+        // must stay on 200 and match cycling must continue from there.
+        let (view, cx) = open(
+            cx,
+            Init::Tree {
+                snapshot: fixture(),
+                pid: 300,
+            },
+        );
+        cx.update(|window, cx| {
+            view.update(cx, |view, cx| view.focus_search(window, cx));
+            window.input("s", cx);
+            window.press("enter", cx);
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            window.click("next-match", cx);
+        });
+        view.read_with(cx, |view, cx| {
+            assert_eq!(view.selected_pid(cx), Some(200));
+        });
+        cx.update(|window, cx| {
+            window.click("refresh", cx);
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, cx| {
+            assert_eq!(view.selected_pid(cx), Some(200));
+        });
+        cx.update(|window, cx| {
+            window.click("next-match", cx);
+        });
+        view.read_with(cx, |view, cx| {
+            assert_eq!(view.selected_pid(cx), Some(300));
+        });
+    }
+
+    #[gpui_kit::test]
     fn match_buttons_show_only_in_tree_and_holders(cx: &mut TestAppContext) {
         let (view, cx) = open(
             cx,

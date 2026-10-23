@@ -667,7 +667,7 @@ impl Phg {
         self.matches.clear();
         self.status = None;
         if matches!(self.view, View::Tree | View::Holders) && !self.committed_query.is_empty() {
-            self.apply_matches(cx);
+            self.recompute_matches(cx);
         }
         cx.notify();
     }
@@ -830,6 +830,28 @@ impl Phg {
             });
         } else {
             self.goto_match(cx);
+        }
+    }
+
+    /// Recomputes matches after a refresh without moving a still-present
+    /// selection: when the selected row is still a match, `match_ix` points
+    /// at it; otherwise selection moves to the first match.
+    fn recompute_matches(&mut self, cx: &mut Context<Self>) {
+        let selected_row = match self.view {
+            View::Tree => self
+                .tree
+                .as_ref()
+                .and_then(|v| v.state.read(cx).selected_index()),
+            _ => self.active_table().and_then(|t| t.read(cx).selected_row()),
+        };
+        let rows = self.collect_match_rows(cx);
+        self.matches = find_matches(&rows, &self.committed_query.clone());
+        match selected_row.and_then(|row| self.matches.iter().position(|&ix| ix == row)) {
+            Some(pos) => {
+                self.match_ix = pos;
+                self.status = Some(format!("Match {}/{}", pos + 1, self.matches.len()));
+            }
+            None => self.apply_matches(cx),
         }
     }
 
