@@ -30,11 +30,18 @@ mod tests {
     }
 
     fn open(cx: &mut TestAppContext, init: Init) -> (Entity<Phg>, &mut VisualTestContext) {
+        open_with(cx, Source::Fixture(fixture()), init)
+    }
+
+    fn open_with(
+        cx: &mut TestAppContext,
+        source: Source,
+        init: Init,
+    ) -> (Entity<Phg>, &mut VisualTestContext) {
         cx.update(|cx| {
             gpui_kit::init(cx);
             crate::bind_keys(cx);
         });
-        let source = Source::Fixture(fixture());
         let (view, cx) = cx.add_window_view(move |window, cx| Phg::new(window, cx, source, init));
         cx.run_until_parked();
         (view, cx)
@@ -210,6 +217,68 @@ mod tests {
         cx.update(|window, _| {
             assert!(window.try_find_by_label("Prev").is_some());
             assert!(window.try_find_by_label("Next").is_some());
+        });
+    }
+
+    #[gpui_kit::test]
+    fn focus_syncs_cached_process_table(cx: &mut TestAppContext) {
+        // The source's next snapshot drops logger (302); the cached processes
+        // table must be re-synced when the focus snapshot is installed.
+        let mut updated = fixture();
+        updated.retain(|p| p.pid != 302);
+        let (view, cx) = open_with(
+            cx,
+            Source::Fixture(updated),
+            Init::Processes {
+                snapshot: fixture(),
+            },
+        );
+        cx.update(|window, cx| {
+            view.update(cx, |view, cx| view.focus_pid(301, window, cx));
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            view.update(cx, |view, cx| view.restore(window, cx));
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, cx| {
+            assert!(matches!(view.view_kind(), View::Processes));
+            let (_, total) = view.position(cx);
+            assert_eq!(total, 4);
+        });
+    }
+
+    #[gpui_kit::test]
+    fn focus_re_resolves_cached_holder_table(cx: &mut TestAppContext) {
+        // The source's next snapshot drops bash (200), a current holder; the
+        // cached holders table must be re-resolved against the new snapshot.
+        let mut updated = fixture();
+        updated.retain(|p| p.pid != 200);
+        let holders = fixture()
+            .into_iter()
+            .filter(|p| p.pid == 200 || p.pid == 300)
+            .collect();
+        let (view, cx) = open_with(
+            cx,
+            Source::Fixture(updated),
+            Init::Holders {
+                snapshot: fixture(),
+                path: "/tmp/lock".into(),
+                holders,
+            },
+        );
+        cx.update(|window, cx| {
+            view.update(cx, |view, cx| view.focus_pid(300, window, cx));
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            view.update(cx, |view, cx| view.restore(window, cx));
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, cx| {
+            assert!(matches!(view.view_kind(), View::Holders));
+            let (_, total) = view.position(cx);
+            assert_eq!(total, 1);
         });
     }
 

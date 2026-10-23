@@ -53,6 +53,10 @@ impl ProcessTableDelegate {
         &self.rows
     }
 
+    pub fn all(&self) -> &[ProcessInfo] {
+        &self.all
+    }
+
     fn rebuild(&mut self) {
         self.rows = filtered(&self.all, &self.filter).cloned().collect();
         self.apply_sort();

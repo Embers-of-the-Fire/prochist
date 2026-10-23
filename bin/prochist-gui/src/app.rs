@@ -454,7 +454,7 @@ impl Phg {
                     View::Holders => FocusEntry::Holders,
                 };
                 self.focus_stack.push(entry);
-                self.snapshot = snapshot;
+                self.install_snapshot(snapshot, None, cx);
                 self.rebuild_tree(pid, &tree, true, cx);
                 self.view = View::Tree;
                 self.matches.clear();
@@ -510,7 +510,7 @@ impl Phg {
                 }
                 match result {
                     Ok((snapshot, _, Some(tree))) => {
-                        this.snapshot = snapshot;
+                        this.install_snapshot(snapshot, None, cx);
                         this.rebuild_tree(pid, &tree, true, cx);
                         this.view = View::Tree;
                         this.status = None;
@@ -551,6 +551,39 @@ impl Phg {
         self.view = View::Processes;
         self.matches.clear();
         cx.notify();
+    }
+
+    /// Installs `snapshot` and syncs every cached table with it, preserving
+    /// each table's selection by PID. Holder rows are re-resolved against the
+    /// new snapshot — from `holder_pids` when freshly fetched, otherwise from
+    /// the PIDs the holders table currently holds.
+    fn install_snapshot(
+        &mut self,
+        snapshot: Vec<ProcessInfo>,
+        holder_pids: Option<Vec<Pid>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.snapshot = snapshot;
+        if let Some(table) = self.processes.clone() {
+            let all = self.snapshot.clone();
+            table.update(cx, |t, cx| {
+                let selected = t.selected_row().and_then(|ix| t.delegate().pid_at(ix));
+                t.delegate_mut().set_all(all);
+                Self::reselect(t, selected, cx);
+            });
+        }
+        if let Some(table) = self.holders.clone() {
+            let snapshot = self.snapshot.clone();
+            table.update(cx, move |t, cx| {
+                let selected = t.selected_row().and_then(|ix| t.delegate().pid_at(ix));
+                let pids = match &holder_pids {
+                    Some(pids) => pids.clone(),
+                    None => t.delegate().all().iter().map(|p| p.pid).collect(),
+                };
+                t.delegate_mut().set_all(resolve_holders(&snapshot, &pids));
+                Self::reselect(t, selected, cx);
+            });
+        }
     }
 
     // --- refresh ------------------------------------------------------------
@@ -614,37 +647,15 @@ impl Phg {
                 return;
             }
         };
-        self.snapshot = snapshot;
-        match self.view {
-            View::Processes => {
-                if let Some(table) = self.processes.clone() {
-                    let selected = self.selected_pid(cx);
-                    let snapshot = self.snapshot.clone();
-                    table.update(cx, |t, cx| {
-                        t.delegate_mut().set_all(snapshot);
-                        Self::reselect(t, selected, cx);
-                    });
-                }
-            }
-            View::Holders => {
-                if let (Some(table), Some(pids)) = (self.holders.clone(), holders) {
-                    let selected = self.selected_pid(cx);
-                    let all = resolve_holders(&self.snapshot, &pids);
-                    table.update(cx, |t, cx| {
-                        t.delegate_mut().set_all(all);
-                        Self::reselect(t, selected, cx);
-                    });
-                }
-            }
-            View::Tree => {
-                if let Some(tree) = tree {
-                    let selected = self.selected_pid(cx);
-                    let focus_pid = tree.current.pid;
-                    self.rebuild_tree(focus_pid, &tree, false, cx);
-                    if let Some(pid) = selected {
-                        self.select_tree_pid(pid, cx);
-                    }
-                }
+        self.install_snapshot(snapshot, holders, cx);
+        if self.view == View::Tree
+            && let Some(tree) = tree
+        {
+            let selected = self.selected_pid(cx);
+            let focus_pid = tree.current.pid;
+            self.rebuild_tree(focus_pid, &tree, false, cx);
+            if let Some(pid) = selected {
+                self.select_tree_pid(pid, cx);
             }
         }
         self.matches.clear();
