@@ -139,6 +139,81 @@ mod tests {
     }
 
     #[gpui_kit::test]
+    fn back_button_restores_previous_focus(cx: &mut TestAppContext) {
+        let (view, cx) = open(
+            cx,
+            Init::Processes {
+                snapshot: fixture(),
+            },
+        );
+        cx.update(|window, cx| {
+            view.update(cx, |view, cx| view.focus_pid(301, window, cx));
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            window.click("back", cx);
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, _| {
+            assert!(matches!(view.view_kind(), View::Processes));
+        });
+    }
+
+    #[gpui_kit::test]
+    fn next_prev_buttons_cycle_search_matches(cx: &mut TestAppContext) {
+        let (view, cx) = open(
+            cx,
+            Init::Tree {
+                snapshot: fixture(),
+                pid: 300,
+            },
+        );
+        cx.update(|window, cx| {
+            view.update(cx, |view, cx| view.focus_search(window, cx));
+            window.input("s", cx);
+            window.press("enter", cx);
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, cx| {
+            assert_eq!(view.selected_pid(cx), Some(1));
+        });
+        cx.update(|window, cx| {
+            window.click("next-match", cx);
+        });
+        view.read_with(cx, |view, cx| {
+            assert_eq!(view.selected_pid(cx), Some(200));
+        });
+        cx.update(|window, cx| {
+            window.click("prev-match", cx);
+        });
+        view.read_with(cx, |view, cx| {
+            assert_eq!(view.selected_pid(cx), Some(1));
+        });
+    }
+
+    #[gpui_kit::test]
+    fn match_buttons_show_only_in_tree_and_holders(cx: &mut TestAppContext) {
+        let (view, cx) = open(
+            cx,
+            Init::Processes {
+                snapshot: fixture(),
+            },
+        );
+        cx.update(|window, _| {
+            assert!(window.try_find_by_label("Prev").is_none());
+            assert!(window.try_find_by_label("Next").is_none());
+        });
+        cx.update(|window, cx| {
+            view.update(cx, |view, cx| view.focus_pid(301, window, cx));
+        });
+        cx.run_until_parked();
+        cx.update(|window, _| {
+            assert!(window.try_find_by_label("Prev").is_some());
+            assert!(window.try_find_by_label("Next").is_some());
+        });
+    }
+
+    #[gpui_kit::test]
     fn details_pane_fits_all_fields(cx: &mut TestAppContext) {
         let (view, cx) = open(
             cx,

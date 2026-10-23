@@ -40,7 +40,7 @@ messages, and the focus breadcrumb.
 | right-click a row | action menu: focus, copy name/command/PID/path |
 | click a column header | sort ascending/descending/off |
 | click a details field | copy the field value |
-| toolbar buttons | All Processes / search box / Refresh / ? Help |
+| toolbar buttons | All Processes / Back (restore previous focus) / search box / Prev / Next (search matches, tree & holders views only) / Refresh / ? Help |
 
 ## Keyboard
 

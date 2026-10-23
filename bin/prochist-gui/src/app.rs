@@ -986,7 +986,33 @@ impl Phg {
                         this.show_all_processes(window, cx);
                     })),
             )
+            .child(
+                Button::new("back")
+                    .outline()
+                    .label("Back")
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.restore(window, cx);
+                    })),
+            )
             .child(div().w(px(320.)).child(Input::new(&self.search)))
+            .when(self.view != View::Processes, |this| {
+                this.child(
+                    Button::new("prev-match")
+                        .outline()
+                        .label("Prev")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.cycle_match(-1, cx);
+                        })),
+                )
+                .child(
+                    Button::new("next-match")
+                        .outline()
+                        .label("Next")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.cycle_match(1, cx);
+                        })),
+                )
+            })
             .child(
                 Button::new("refresh")
                     .outline()
