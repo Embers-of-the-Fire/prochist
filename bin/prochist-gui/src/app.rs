@@ -560,6 +560,8 @@ impl Phg {
         let view = self.view;
         let focus_pid = self.tree.as_ref().map(|t| t.focus_pid);
         let holders_path = self.holders_path.clone();
+        self.focus_seq += 1;
+        let seq = self.focus_seq;
         self.status = Some("Refreshing…".into());
         cx.notify();
         cx.spawn_in(window, async move |this, cx| {
@@ -583,7 +585,7 @@ impl Phg {
                 })
                 .await;
             this.update_in(cx, move |this, _, cx| {
-                this.apply_refresh(view, focus_pid, result, cx);
+                this.apply_refresh(seq, view, focus_pid, result, cx);
             })
             .ok();
         })
@@ -592,14 +594,16 @@ impl Phg {
 
     fn apply_refresh(
         &mut self,
+        seq: u64,
         view: View,
         focus_pid: Option<Pid>,
         result: FetchResult,
         cx: &mut Context<Self>,
     ) {
-        // Discard a stale refresh: the view or focus changed while it ran.
+        // Discard a stale refresh: a newer refresh/focus superseded it,
+        // or the view or focus changed while it ran.
         let current_focus = self.tree.as_ref().map(|t| t.focus_pid);
-        if self.view != view || current_focus != focus_pid {
+        if self.focus_seq != seq || self.view != view || current_focus != focus_pid {
             return;
         }
         let (snapshot, holders, tree) = match result {
