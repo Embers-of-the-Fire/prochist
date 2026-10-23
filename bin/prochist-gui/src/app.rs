@@ -582,13 +582,26 @@ impl Phg {
                     Ok::<_, FetchError>((snapshot, holders, tree))
                 })
                 .await;
-            this.update_in(cx, |this, _, cx| this.apply_refresh(result, cx))
-                .ok();
+            this.update_in(cx, move |this, _, cx| {
+                this.apply_refresh(view, focus_pid, result, cx);
+            })
+            .ok();
         })
         .detach();
     }
 
-    fn apply_refresh(&mut self, result: FetchResult, cx: &mut Context<Self>) {
+    fn apply_refresh(
+        &mut self,
+        view: View,
+        focus_pid: Option<Pid>,
+        result: FetchResult,
+        cx: &mut Context<Self>,
+    ) {
+        // Discard a stale refresh: the view or focus changed while it ran.
+        let current_focus = self.tree.as_ref().map(|t| t.focus_pid);
+        if self.view != view || current_focus != focus_pid {
+            return;
+        }
         let (snapshot, holders, tree) = match result {
             Ok(data) => data,
             Err(e) => {
