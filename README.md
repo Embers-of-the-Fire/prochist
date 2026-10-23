@@ -1,6 +1,7 @@
 # prochist
 
-`ph` — print the process tree around a PID. `phi` — explore it interactively.
+`ph` — print the process tree around a PID. `phi` — explore it interactively
+in the terminal. `phg` — explore it in a native desktop window.
 
 Windows is the shipping target; Linux is the development/verification platform.
 
@@ -79,6 +80,19 @@ Vim-like navigation (`j`/`k`, `Ctrl-d`/`u`, `gg`/`G`), a details pane with
 field-wise yanking (`y`/`Y`, via OSC 52), and a help screen (`?`). Full keymap:
 [docs/tui.md](docs/tui.md).
 
+## `phg` — desktop GUI
+
+`phg` is a gpui/gpui-kit desktop window over the same model: a sortable
+process table, a collapsible tree, details pane, context menus, and a search
+box — mouse-first, with the TUI keybindings kept where they make sense.
+
+```sh
+cargo run --bin phg -- [-p PID]
+cargo run --bin phg -- -f FILE|DIR
+```
+
+Full reference: [docs/gui.md](docs/gui.md).
+
 ## Exit codes
 
 - `0` — tree or holder list printed.
@@ -93,7 +107,8 @@ Rust workspace, edition 2024:
 crates/prochist-core   # data model, ProcessProvider trait, tree building, platform backends
 bin/prochist-cli       # the `ph` binary (clap 4 derive) + tree rendering
 bin/prochist-tui       # the `phi` binary (ratatui/crossterm TUI)
-docs/                  # design notes (architecture, CLI, TUI, Windows plan)
+bin/prochist-gui       # the `phg` binary (gpui-kit desktop GUI)
+docs/                  # design notes (architecture, CLI, TUI, GUI, Windows plan)
 ```
 
 ```sh
@@ -103,7 +118,8 @@ cargo fmt --check
 ```
 
 Design details: [docs/architecture.md](docs/architecture.md),
-[docs/tui.md](docs/tui.md), [docs/windows-notes.md](docs/windows-notes.md).
+[docs/tui.md](docs/tui.md), [docs/gui.md](docs/gui.md),
+[docs/windows-notes.md](docs/windows-notes.md).
 
 ## License
 

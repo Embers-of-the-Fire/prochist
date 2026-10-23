@@ -9,13 +9,15 @@ Rust workspace. `ph` — prints the process tree around a PID (`-p`) or the proc
 - Bless trycmd fixtures after intentional output changes: `TRYCMD=overwrite cargo test`
 - Run the binary: `cargo run --bin ph -- [flags] [-p PID]` or `cargo run --bin ph -- -f FILE|DIR`
 - Run the TUI: `cargo run --bin phi -- [-p PID]` or `cargo run --bin phi -- -f FILE|DIR`
+- Run the GUI: `cargo run --bin phg -- [-p PID]` or `cargo run --bin phg -- -f FILE|DIR`
 
 ## Layout / boundaries
 
 - `crates/prochist-core` — model, `ProcessProvider` trait, `build_tree`, platform backends. No formatting/rendering here by design (a future GUI reuses the same model). Details: `crates/prochist-core/AGENTS.md`.
 - `bin/prochist-cli` — the `ph` binary (clap 4 derive); owns all user-facing output in `render.rs`. Details: `bin/prochist-cli/AGENTS.md`.
 - `bin/prochist-tui` — the `phi` binary (ratatui/crossterm TUI). Details: `bin/prochist-tui/AGENTS.md`.
-- `docs/architecture.md`, `docs/cli.md`, `docs/tui.md`, `docs/windows-notes.md` — keep in sync when behavior changes.
+- `bin/prochist-gui` — the `phg` binary (gpui-kit desktop GUI). Details: `bin/prochist-gui/AGENTS.md`.
+- `docs/architecture.md`, `docs/cli.md`, `docs/tui.md`, `docs/gui.md`, `docs/windows-notes.md` — keep in sync when behavior changes.
 
 ## Testing
 
@@ -31,7 +33,7 @@ Rust workspace. `ph` — prints the process tree around a PID (`-p`) or the proc
 ## Releasing
 
 - `release-plz.yml` releases per-package tags/GitHub releases + crates.io on push to `main`. It uses the `RELEASE_PLZ_TOKEN` secret (PAT), not the default `GITHUB_TOKEN` — the default token cannot trigger other workflows, which `cd.yml` depends on.
-- `cd.yml` runs on `release: [published]`: builds `ph`/`phi` for `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu` from the tagged commit and attaches archives to the matching package release (`ph` → `prochist-cli-v*`, `phi` → `prochist-tui-v*`).
+- `cd.yml` runs on `release: [published]`: builds `ph`/`phi`/`phg` for `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu` from the tagged commit and attaches archives to the matching package release (`ph` → `prochist-cli-v*`, `phi` → `prochist-tui-v*`, `phg` → `prochist-gui-v*`). Linux builds install gpui's system dependencies first (see the apt step in `ci.yml`).
 
 ## Conventions
 

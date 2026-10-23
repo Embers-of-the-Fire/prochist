@@ -6,6 +6,7 @@ prochist is a Rust workspace with the following layout:
 crates/prochist-core   # data model, provider trait, tree building, platform backends
 bin/prochist-cli       # the `ph` binary (clap 4 derive) + tree rendering
 bin/prochist-tui       # the `phi` binary — interactive ratatui/crossterm frontend
+bin/prochist-gui       # the `phg` binary — gpui/gpui-kit desktop frontend
 docs/                  # design notes
 ```
 
@@ -53,3 +54,14 @@ The flag is hidden from `--help` and intended for testing only.
 (returning `Effect`s such as `Copy`); side effects (terminal I/O, clipboard)
 stay in `main.rs`/`clipboard.rs` so the app logic is unit-testable. Yanking
 uses the OSC 52 escape sequence instead of a clipboard crate. See `tui.md`.
+
+## prochist-gui
+
+`phg` is the desktop frontend (gpui via `gpui-kit`) over the same model, with
+a native-look UI: a sortable `DataTable` for the processes/holders views, a
+collapsible `Tree` for the tree view (full descendant hierarchy, not just
+direct children), details pane and status bar. Provider calls run on the
+background executor (`cx.spawn_in`); clipboard uses the native
+`cx.write_to_clipboard`. Pure logic (search syntax, display names, subtree
+building) lives in gpui-free `state.rs` and shares semantics with the TUI.
+See `gui.md`.
