@@ -664,6 +664,11 @@ impl Phg {
         }
         self.matches.clear();
         self.status = None;
+        if matches!(self.view, View::Tree | View::Holders)
+            && !self.search.read(cx).value().is_empty()
+        {
+            self.apply_matches(cx);
+        }
         cx.notify();
     }
 
@@ -779,44 +784,50 @@ impl Phg {
     }
 
     fn on_search_commit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let query = self.search.read(cx).value().to_string();
         match self.view {
             View::Processes => {
                 self.status = None;
             }
-            View::Tree | View::Holders => {
-                let rows: Vec<ProcessInfo> = match self.view {
-                    View::Tree => self
-                        .tree
-                        .as_ref()
-                        .map(|t| {
-                            t.flat
-                                .iter()
-                                .filter_map(|(pid, _)| t.by_pid.get(pid).cloned())
-                                .collect()
-                        })
-                        .unwrap_or_default(),
-                    _ => self
-                        .holders
-                        .as_ref()
-                        .map(|t| t.read(cx).delegate().rows().to_vec())
-                        .unwrap_or_default(),
-                };
-                self.matches = find_matches(&rows, &query);
-                self.match_ix = 0;
-                if self.matches.is_empty() {
-                    self.status = Some(if query.is_empty() {
-                        String::new()
-                    } else {
-                        format!("No matches for `{query}`")
-                    });
-                } else {
-                    self.goto_match(cx);
-                }
-            }
+            View::Tree | View::Holders => self.apply_matches(cx),
         }
         self.focus_main(window, cx);
         cx.notify();
+    }
+
+    fn collect_match_rows(&self, cx: &App) -> Vec<ProcessInfo> {
+        match self.view {
+            View::Tree => self
+                .tree
+                .as_ref()
+                .map(|t| {
+                    t.flat
+                        .iter()
+                        .filter_map(|(pid, _)| t.by_pid.get(pid).cloned())
+                        .collect()
+                })
+                .unwrap_or_default(),
+            _ => self
+                .holders
+                .as_ref()
+                .map(|t| t.read(cx).delegate().rows().to_vec())
+                .unwrap_or_default(),
+        }
+    }
+
+    fn apply_matches(&mut self, cx: &mut Context<Self>) {
+        let query = self.search.read(cx).value().to_string();
+        let rows = self.collect_match_rows(cx);
+        self.matches = find_matches(&rows, &query);
+        self.match_ix = 0;
+        if self.matches.is_empty() {
+            self.status = Some(if query.is_empty() {
+                String::new()
+            } else {
+                format!("No matches for `{query}`")
+            });
+        } else {
+            self.goto_match(cx);
+        }
     }
 
     fn goto_match(&mut self, cx: &mut Context<Self>) {
