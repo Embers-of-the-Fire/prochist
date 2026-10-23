@@ -7,6 +7,7 @@ for the processes holding a file or directory open.
 phg                 # all processes (sortable table)
 phg -p PID          # collapsible process tree around PID
 phg -f FILE|DIR     # processes holding FILE/DIR open
+                    # (Windows: files only, no directory queries)
 ```
 
 Mouse-first (click to select, double-click to focus, right-click for copy
