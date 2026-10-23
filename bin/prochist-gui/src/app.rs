@@ -466,7 +466,7 @@ impl Phg {
     }
 
     pub(crate) fn restore(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(entry) = self.focus_stack.pop() else {
+        let Some(entry) = self.focus_stack.last().cloned() else {
             self.status = Some("Already at the top level".into());
             cx.notify();
             return;
@@ -474,12 +474,14 @@ impl Phg {
         self.focus_seq += 1;
         match entry {
             FocusEntry::Processes => {
+                self.focus_stack.pop();
                 self.view = View::Processes;
                 self.matches.clear();
                 self.status = None;
                 cx.notify();
             }
             FocusEntry::Holders => {
+                self.focus_stack.pop();
                 self.view = View::Holders;
                 self.matches.clear();
                 self.status = None;
@@ -510,6 +512,9 @@ impl Phg {
                 }
                 match result {
                     Ok((snapshot, _, Some(tree))) => {
+                        // Only now consume the history entry, so a failed or
+                        // superseded restore leaves it available for retry.
+                        this.focus_stack.pop();
                         this.install_snapshot(snapshot, None, cx);
                         this.rebuild_tree(pid, &tree, true, cx);
                         this.view = View::Tree;
@@ -517,7 +522,6 @@ impl Phg {
                     }
                     Ok(_) => unreachable!(),
                     Err(e) => {
-                        // The popped entry is lost, matching the TUI's accepted tradeoff.
                         this.status = Some(format!("phg: {e}"));
                     }
                 }
