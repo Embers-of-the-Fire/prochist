@@ -33,7 +33,7 @@ Rust workspace. `ph` — prints the process tree around a PID (`-p`) or the proc
 ## Releasing
 
 - `release-plz.yml` releases per-package tags/GitHub releases + crates.io on push to `main`. It uses the `RELEASE_PLZ_TOKEN` secret (PAT), not the default `GITHUB_TOKEN` — the default token cannot trigger other workflows, which `cd.yml` depends on.
-- `cd.yml` runs on `release: [published]`: builds `ph`/`phi`/`phg` for `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu` from the tagged commit and attaches archives to the matching package release (`ph` → `prochist-cli-v*`, `phi` → `prochist-tui-v*`, `phg` → `prochist-gui-v*`). Linux builds install gpui's system dependencies first (see the apt step in `ci.yml`).
+- `cd.yml` runs on `release: [published]`: builds `ph`/`phi`/`phg` for `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu` from the tagged commit and attaches archives to the matching package release (`ph` → `prochist-cli-v*`, `phi` → `prochist-tui-v*`, `phg` → `prochist-gui-v*`). Linux builds install gpui's system dependencies first (shared composite action: `.github/actions/install-gpui-deps`, also used by `ci.yml` and `release-plz.yml`).
 
 ## Conventions
 

@@ -36,11 +36,7 @@ jobs:
           shared-key: ${{ matrix.os }}
       - name: Install gpui system dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt update
-          sudo apt install -y gcc g++ clang libfontconfig-dev libwayland-dev \
-            libwebkit2gtk-4.1-dev libxkbcommon-x11-dev libx11-xcb-dev \
-            libssl-dev libzstd-dev vulkan-validationlayers libvulkan1
+        uses: ./.github/actions/install-gpui-deps
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
@@ -58,9 +54,5 @@ jobs:
           shared-key: ${{ matrix.os }}
       - name: Install gpui system dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt update
-          sudo apt install -y gcc g++ clang libfontconfig-dev libwayland-dev \
-            libwebkit2gtk-4.1-dev libxkbcommon-x11-dev libx11-xcb-dev \
-            libssl-dev libzstd-dev vulkan-validationlayers libvulkan1
+        uses: ./.github/actions/install-gpui-deps
       - run: cargo test --workspace
