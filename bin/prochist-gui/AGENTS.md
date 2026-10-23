@@ -2,7 +2,8 @@
 
 Desktop GUI over `prochist-core`, built with `gpui-kit` 0.8 (gpui-pre 0.3.9
 snapshot). Same clap surface as `phi` (`-p` / `-f`, hidden `--snapshot`) and
-the same `phg: error: ...` / exit-code-1 convention.
+the same `phg: error: ...` / exit-code-1 convention for application errors
+(clap argument errors use clap's usage error / exit code 2).
 
 ## Commands
 

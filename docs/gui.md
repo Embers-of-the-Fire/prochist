@@ -12,9 +12,11 @@ phg -p PID          # collapsible process tree around PID
 phg -f FILE|DIR     # processes holding FILE/DIR open (same rules as ph)
 ```
 
-`-p` and `-f` conflict; errors print `phg: error: ...` to stderr and exit 1
-before any window opens. The hidden `--snapshot <FILE>` flag replays a JSON
-fixture instead of querying the OS (testing only, same as `ph`/`phi`).
+`-p` and `-f` conflict; application errors (after argument parsing) print
+`phg: error: ...` to stderr and exit 1 before any window opens. Argument
+errors (e.g. supplying both `-p` and `-f`) are clap usage errors with exit
+code 2. The hidden `--snapshot <FILE>` flag replays a JSON fixture instead
+of querying the OS (testing only, same as `ph`/`phi`).
 
 ## Views
 
