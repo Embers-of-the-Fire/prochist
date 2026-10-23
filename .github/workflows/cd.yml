@@ -56,11 +56,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Install gpui system dependencies (Linux)
         if: env.PACKAGE_MATCH == 'true' && matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt update
-          sudo apt install -y gcc g++ clang libfontconfig-dev libwayland-dev \
-            libwebkit2gtk-4.1-dev libxkbcommon-x11-dev libx11-xcb-dev \
-            libssl-dev libzstd-dev vulkan-validationlayers libvulkan1
+        uses: ./.github/actions/install-gpui-deps
       - name: Static CRT on MSVC
         if: env.PACKAGE_MATCH == 'true' && endsWith(matrix.target, 'windows-msvc')
         shell: bash
