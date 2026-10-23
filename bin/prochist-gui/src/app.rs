@@ -96,6 +96,7 @@ pub struct Phg {
     holders_path: Option<PathBuf>,
     search: Entity<InputState>,
     saved_query: String,
+    committed_query: String,
     matches: Vec<usize>,
     match_ix: usize,
     detail_field: usize,
@@ -150,6 +151,7 @@ impl Phg {
             holders_path,
             search,
             saved_query: String::new(),
+            committed_query: String::new(),
             matches: Vec::new(),
             match_ix: 0,
             detail_field: 0,
@@ -664,9 +666,7 @@ impl Phg {
         }
         self.matches.clear();
         self.status = None;
-        if matches!(self.view, View::Tree | View::Holders)
-            && !self.search.read(cx).value().is_empty()
-        {
+        if matches!(self.view, View::Tree | View::Holders) && !self.committed_query.is_empty() {
             self.apply_matches(cx);
         }
         cx.notify();
@@ -788,7 +788,10 @@ impl Phg {
             View::Processes => {
                 self.status = None;
             }
-            View::Tree | View::Holders => self.apply_matches(cx),
+            View::Tree | View::Holders => {
+                self.committed_query = self.search.read(cx).value().to_string();
+                self.apply_matches(cx);
+            }
         }
         self.focus_main(window, cx);
         cx.notify();
@@ -815,7 +818,7 @@ impl Phg {
     }
 
     fn apply_matches(&mut self, cx: &mut Context<Self>) {
-        let query = self.search.read(cx).value().to_string();
+        let query = self.committed_query.clone();
         let rows = self.collect_match_rows(cx);
         self.matches = find_matches(&rows, &query);
         self.match_ix = 0;

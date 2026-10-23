@@ -199,6 +199,41 @@ mod tests {
     }
 
     #[gpui_kit::test]
+    fn refresh_recomputes_matches_from_committed_query(cx: &mut TestAppContext) {
+        // Commit "s" (matches init + bash), then narrow the input to the
+        // uncommitted draft "sl" (matches init only). Refresh must recompute
+        // matches from the committed "s", so Next still reaches bash (200).
+        let (view, cx) = open(
+            cx,
+            Init::Tree {
+                snapshot: fixture(),
+                pid: 300,
+            },
+        );
+        cx.update(|window, cx| {
+            view.update(cx, |view, cx| view.focus_search(window, cx));
+            window.input("s", cx);
+            window.press("enter", cx);
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            view.update(cx, |view, cx| view.focus_search(window, cx));
+            window.input("l", cx);
+            window.click("refresh", cx);
+        });
+        cx.run_until_parked();
+        view.read_with(cx, |view, cx| {
+            assert_eq!(view.selected_pid(cx), Some(1));
+        });
+        cx.update(|window, cx| {
+            window.click("next-match", cx);
+        });
+        view.read_with(cx, |view, cx| {
+            assert_eq!(view.selected_pid(cx), Some(200));
+        });
+    }
+
+    #[gpui_kit::test]
     fn match_buttons_show_only_in_tree_and_holders(cx: &mut TestAppContext) {
         let (view, cx) = open(
             cx,
