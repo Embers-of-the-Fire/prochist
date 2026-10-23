@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use prochist_core::{Pid, ProcessInfo, ProcessRole, TreeError, build_tree};
 
@@ -24,11 +25,9 @@ pub fn display_name(p: &ProcessInfo) -> String {
         return tag;
     }
     match &p.exe {
-        Some(exe) => exe
-            .rsplit(['/', '\\'])
-            .next()
-            .filter(|f| !f.is_empty())
-            .map(|f| f.to_string())
+        Some(exe) => Path::new(exe)
+            .file_name()
+            .map(|f| f.to_string_lossy().into_owned())
             .unwrap_or_else(|| p.name.clone()),
         None => p.name.clone(),
     }
@@ -240,6 +239,17 @@ mod tests {
         ]
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn display_name_prefers_exe_basename() {
+        let mut p = proc(1, 0, "ph");
+        p.exe = Some("/usr/local/bin/ph".to_string());
+        assert_eq!(display_name(&p), "ph");
+        let p = proc(1, 0, "fallback");
+        assert_eq!(display_name(&p), "fallback");
+    }
+
+    #[cfg(windows)]
     #[test]
     fn display_name_prefers_exe_basename() {
         let mut p = proc(1, 0, "cmd.exe");
