@@ -101,6 +101,7 @@ pub struct Phg {
     detail_field: usize,
     details_focus: FocusHandle,
     status: Option<String>,
+    focus_seq: u64,
     _subs: Vec<Subscription>,
 }
 
@@ -154,6 +155,7 @@ impl Phg {
             detail_field: 0,
             details_focus: cx.focus_handle(),
             status: None,
+            focus_seq: 0,
             _subs: subs,
         };
 
@@ -410,6 +412,8 @@ impl Phg {
 
     pub(crate) fn focus_pid(&mut self, pid: Pid, window: &mut Window, cx: &mut Context<Self>) {
         let source = self.source.clone();
+        self.focus_seq += 1;
+        let seq = self.focus_seq;
         self.status = Some(format!("Focusing pid {pid}…"));
         cx.notify();
         cx.spawn_in(window, async move |this, cx| {
@@ -422,7 +426,10 @@ impl Phg {
                 })
                 .await;
             this.update_in(cx, |this, _, cx| {
-                this.apply_focus(pid, result, cx);
+                // A newer focus/restore superseded this request while it ran.
+                if this.focus_seq == seq {
+                    this.apply_focus(pid, result, cx);
+                }
             })
             .ok();
         })
@@ -464,6 +471,7 @@ impl Phg {
             cx.notify();
             return;
         };
+        self.focus_seq += 1;
         match entry {
             FocusEntry::Processes => {
                 self.view = View::Processes;
@@ -485,6 +493,7 @@ impl Phg {
 
     fn focus_pid_for_restore(&mut self, pid: Pid, window: &mut Window, cx: &mut Context<Self>) {
         let source = self.source.clone();
+        let seq = self.focus_seq;
         cx.spawn_in(window, async move |this, cx| {
             let bg = cx.background_executor().clone();
             let result = bg
@@ -494,17 +503,23 @@ impl Phg {
                     Ok::<_, FetchError>((snapshot, None::<Vec<Pid>>, Some(tree)))
                 })
                 .await;
-            this.update_in(cx, |this, _window, cx| match result {
-                Ok((snapshot, _, Some(tree))) => {
-                    this.snapshot = snapshot;
-                    this.rebuild_tree(pid, &tree, true, cx);
-                    this.view = View::Tree;
-                    this.status = None;
+            this.update_in(cx, |this, _window, cx| {
+                // A newer focus/restore superseded this request while it ran.
+                if this.focus_seq != seq {
+                    return;
                 }
-                Ok(_) => unreachable!(),
-                Err(e) => {
-                    // The popped entry is lost, matching the TUI's accepted tradeoff.
-                    this.status = Some(format!("phg: {e}"));
+                match result {
+                    Ok((snapshot, _, Some(tree))) => {
+                        this.snapshot = snapshot;
+                        this.rebuild_tree(pid, &tree, true, cx);
+                        this.view = View::Tree;
+                        this.status = None;
+                    }
+                    Ok(_) => unreachable!(),
+                    Err(e) => {
+                        // The popped entry is lost, matching the TUI's accepted tradeoff.
+                        this.status = Some(format!("phg: {e}"));
+                    }
                 }
             })
             .ok();
@@ -528,6 +543,7 @@ impl Phg {
             View::Processes => unreachable!(),
         };
         self.focus_stack.push(entry);
+        self.focus_seq += 1;
         if self.processes.is_none() {
             let table = self.make_table(self.snapshot.clone(), window, cx);
             self.processes = Some(table);
