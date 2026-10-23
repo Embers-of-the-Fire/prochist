@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
 
 use prochist_core::{Pid, ProcessInfo, ProcessRole, TreeError, build_tree};
 
@@ -25,9 +24,11 @@ pub fn display_name(p: &ProcessInfo) -> String {
         return tag;
     }
     match &p.exe {
-        Some(exe) => Path::new(exe)
-            .file_name()
-            .map(|f| f.to_string_lossy().into_owned())
+        Some(exe) => exe
+            .rsplit(['/', '\\'])
+            .next()
+            .filter(|f| !f.is_empty())
+            .map(|f| f.to_string())
             .unwrap_or_else(|| p.name.clone()),
         None => p.name.clone(),
     }
