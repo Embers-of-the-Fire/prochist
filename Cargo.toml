@@ -34,6 +34,7 @@ windows-sys = { version = "0.61", features = [
 
 [profile.release]
 lto = true
+strip = true
 
 # Keep gpui debug builds interactive (recommended by gpui-kit); proc macros
 # stay unoptimized on purpose.
