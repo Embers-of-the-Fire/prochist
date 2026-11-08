@@ -14,4 +14,4 @@ base64.workspace = true
 clap.workspace = true
 crossterm.workspace = true
 ratatui.workspace = true
-prochist-core = { version = "0.3.0", path = "../../crates/prochist-core" }
+prochist-core = { version = "0.3.1", path = "../../crates/prochist-core" }

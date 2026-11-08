@@ -5793,7 +5793,7 @@ dependencies = [
 
 [[package]]
 name = "prochist-cli"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "clap",
  "prochist-core",
@@ -5803,7 +5803,7 @@ dependencies = [
 
 [[package]]
 name = "prochist-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -5812,7 +5812,7 @@ dependencies = [
 
 [[package]]
 name = "prochist-gui"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "clap",
  "gpui-kit",
@@ -5821,7 +5821,7 @@ dependencies = [
 
 [[package]]
 name = "prochist-tui"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "base64 0.23.1",
  "clap",
